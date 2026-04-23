@@ -105,6 +105,12 @@
                             @else
                                 <span class="px-3 py-1 bg-red-500/10 text-red-500 text-[10px] font-bold rounded-full border border-red-500/20 uppercase tracking-widest">INACTIVE</span>
                             @endif
+                            
+                            @if($u->plan_type == 'premium')
+                                <span class="ml-2 px-3 py-1 bg-purple-500/10 text-purple-400 text-[10px] font-bold rounded-full border border-purple-500/20 uppercase tracking-widest">PREMIUM</span>
+                            @else
+                                <span class="ml-2 px-3 py-1 bg-slate-500/10 text-slate-400 text-[10px] font-bold rounded-full border border-slate-500/20 uppercase tracking-widest">FREE</span>
+                            @endif
                         </td>
                         <td class="px-8 py-6">
                             <span class="text-xs font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-slate-800">{{ $u->whatsapp_phone_number_id ?: 'UNASSIGNED' }}</span>
@@ -149,9 +155,18 @@
                         </select>
                     </div>
                 </div>
-                <div class="mb-4">
-                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Phone ID (For Cloud API)</label>
-                    <input type="text" name="whatsapp_phone_number_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="mb-4">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Phone ID (For Cloud API)</label>
+                        <input type="text" name="whatsapp_phone_number_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Service Plan</label>
+                        <select name="plan_type" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition appearance-none">
+                            <option value="free">FREE PLAN (Max 3 Contacts)</option>
+                            <option value="premium">PREMIUM PLAN (Unlimited)</option>
+                        </select>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Login Email Address</label>
@@ -237,6 +252,16 @@
                     </div>
                 </div>
 
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Service Plan</label>
+                        <select name="plan_type" id="editPlanType" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition appearance-none">
+                            <option value="free">FREE PLAN (Max 3 Contacts)</option>
+                            <option value="premium">PREMIUM PLAN (Unlimited)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Google Sheet Name</label>
@@ -292,6 +317,7 @@
             document.getElementById('editAutoMessage').value = user.autoreply_message || '';
             document.getElementById('editIsAutoReply').checked = user.is_autoreply_enabled;
             document.getElementById('editBulkCost').value = user.bulk_message_cost || '0.30';
+            document.getElementById('editPlanType').value = user.plan_type || 'free';
             document.getElementById('editModal').classList.remove('hidden');
         }
         function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }

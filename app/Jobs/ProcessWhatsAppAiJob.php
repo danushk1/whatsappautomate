@@ -57,6 +57,19 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             'has_sheet' => !empty($this->user->google_sheet_name),
         ]);
 
+        // Enforce Free Plan Limits (Max 3 Contacts)
+        $realPhone = $this->msg['real_phone'] ?? $phone;
+        if ($this->user->plan_type === 'free') {
+            $contactCount = \App\Models\Contact::where('user_id', $this->user->id)->count();
+            $contactExists = \App\Models\Contact::where('user_id', $this->user->id)->where('phone', $realPhone)->exists();
+            
+            // If they have 3 or more contacts, and this is a NEW contact, silently drop the message
+            if (!$contactExists && $contactCount >= 3) {
+                Log::info("Free plan limit reached for user {$this->user->id}. Ignored message from new contact {$realPhone}.");
+                return;
+            }
+        }
+
         // Initialize variables
         $text = '';
         $mediaService = new WhatsAppMediaService();

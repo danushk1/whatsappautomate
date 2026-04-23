@@ -88,10 +88,15 @@
                     Operational
                 </span>
             </div>
-            <div class="glass-card p-6 rounded-3xl bg-emerald-500/5 flex flex-col justify-between">
+            <div class="glass-card p-6 rounded-3xl {{ $user->plan_type === 'premium' ? 'bg-purple-500/5' : 'bg-slate-500/5' }} flex flex-col justify-between">
                 <div>
                     <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Plan Mode</p>
-                    <span class="text-xl font-extrabold text-white">ENTERPRISE</span>
+                    <span class="text-xl font-extrabold {{ $user->plan_type === 'premium' ? 'text-purple-400' : 'text-slate-300' }}">
+                        {{ strtoupper($user->plan_type) }} PLAN
+                    </span>
+                    @if($user->plan_type === 'free')
+                        <p class="text-[10px] font-bold text-red-400 mt-1 uppercase tracking-widest">Limit: Max 3 Contacts</p>
+                    @endif
                 </div>
                 <a href="{{ route('bulk-message.index') }}" class="mt-4 inline-flex items-center justify-center bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-lg shadow-purple-500/20">
                     <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>

@@ -33,6 +33,7 @@ class AdminController extends Controller
             'inventory_api_url' => 'nullable|string',
             'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'nullable|in:cloud_api,web_automation',
+            'plan_type' => 'nullable|in:free,premium',
         ]);
 
         User::create([
@@ -48,6 +49,7 @@ class AdminController extends Controller
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
             'connection_type' => $request->connection_type ?? 'web_automation',
+            'plan_type' => $request->plan_type ?? 'free',
             'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
         ]);
 
@@ -72,6 +74,7 @@ class AdminController extends Controller
             'target_mode' => 'nullable|in:EXCEL,API',
             'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'required|in:cloud_api,web_automation',
+            'plan_type' => 'required|in:free,premium',
         ]);
 
         $user->update([
@@ -86,6 +89,7 @@ class AdminController extends Controller
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
             'connection_type' => $request->connection_type,
+            'plan_type' => $request->plan_type,
             'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
         ]);
 

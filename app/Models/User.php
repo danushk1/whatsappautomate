@@ -54,6 +54,7 @@ class User extends Authenticatable implements FilamentUser
         'whatsapp_qr_code_path',
         'whatsapp_connected_at',
         'bulk_message_cost',
+        'plan_type',
     ];
 
     /**
