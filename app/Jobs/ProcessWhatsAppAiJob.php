@@ -507,7 +507,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
      */
     private function sendViaNodeBridge($phone, $text)
     {
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://brige.site:3000');
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
         $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {
