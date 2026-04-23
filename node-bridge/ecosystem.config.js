@@ -9,7 +9,7 @@ module.exports = {
     env: {
       NODE_ENV: 'production',
       PORT: 3000,
-      LARAVEL_URL: 'http://172.235.19.62',
+      LARAVEL_URL: 'https://brige.site',
       LARAVEL_API_KEY: 'genify-node-bridge-secret-2026',
       QR_CODE_DIR: './public/qr-codes',
       SESSION_DIR: './sessions',

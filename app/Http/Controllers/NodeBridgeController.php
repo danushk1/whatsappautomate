@@ -22,7 +22,7 @@ class NodeBridgeController extends Controller
         ]);
 
         $user = User::findOrFail($request->user_id);
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://172.235.19.62:3000');
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://brige.site:3000');
         $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {

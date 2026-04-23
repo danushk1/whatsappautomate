@@ -31,7 +31,7 @@ const { v4: uuidv4 } = require('uuid');
 
 // Load config from environment or use defaults
 const PORT = process.env.PORT || 3000;
-const LARAVEL_URL = process.env.LARAVEL_URL || 'http://172.235.19.62';
+const LARAVEL_URL = process.env.LARAVEL_URL || 'https://brige.site';
 const LARAVEL_API_KEY = process.env.LARAVEL_API_KEY || 'genify-node-bridge-secret-2026';
 const QR_CODE_DIR = process.env.QR_CODE_DIR || './public/qr-codes';
 const SESSION_DIR = process.env.SESSION_DIR || './sessions';
@@ -67,7 +67,7 @@ const clients = new Map(); // Map<user_id, { client, status, qrReady }>
  */
 async function getOrCreateClient(userId) {
     const key = String(userId);
-    
+
     // If client already exists, return it
     if (clients.has(key)) {
         const existing = clients.get(key);
@@ -78,7 +78,7 @@ async function getOrCreateClient(userId) {
 
     // Session storage path
     const sessionPath = path.join(SESSION_DIR, `session-${userId}`);
-    
+
     const client = new Client({
         authStrategy: new LocalAuth({
             dataPath: sessionPath,
@@ -116,29 +116,29 @@ async function getOrCreateClient(userId) {
     // QR Code Generated
     client.on('qr', async (qr) => {
         console.log(`[${userId}] QR Code generated`);
-        
+
         try {
             // Generate QR as data URL (base64)
             const qrDataUrl = await qrcode.toDataURL(qr);
-            
+
             // Also save as PNG file
             const qrFileName = `qr-${userId}.png`;
             const qrFilePath = path.join(QR_CODE_DIR, qrFileName);
             await qrcode.toFile(qrFilePath, qr);
-            
+
             // Display in terminal
             qrcodeTerminal.generate(qr, { small: true });
-            
+
             clientData.qrReady = true;
             clientData.qrDataUrl = qrDataUrl;
             clientData.qrFilePath = `/qr-codes/${qrFileName}`;
-            
+
             // Notify Laravel about QR code
             await notifyLaravel(userId, 'qr_generated', {
                 qr_code_path: `/qr-codes/${qrFileName}`,
                 qr_data_url: qrDataUrl,
             });
-            
+
         } catch (err) {
             console.error(`[${userId}] QR generation error:`, err);
         }
@@ -147,11 +147,11 @@ async function getOrCreateClient(userId) {
     // Client Ready (Authenticated)
     client.on('ready', async () => {
         console.log(`[${userId}] ✅ Client is ready!`);
-        
+
         const info = client.info;
         clientData.status = 'connected';
         clientData.qrReady = false;
-        
+
         // Notify Laravel about successful connection
         await notifyLaravel(userId, 'connected', {
             phone: info.wid.user,
@@ -164,7 +164,7 @@ async function getOrCreateClient(userId) {
     client.on('auth_failure', (msg) => {
         console.error(`[${userId}] ❌ Auth failure:`, msg);
         clientData.status = 'auth_failure';
-        
+
         notifyLaravel(userId, 'auth_failure', { error: msg });
     });
 
@@ -173,9 +173,9 @@ async function getOrCreateClient(userId) {
         console.log(`[${userId}] 🔌 Disconnected:`, reason);
         clientData.status = 'disconnected';
         clientData.qrReady = false;
-        
+
         await notifyLaravel(userId, 'disconnected', { reason });
-        
+
         // Auto-reconnect after 5 seconds
         console.log(`[${userId}] Attempting reconnect in 5 seconds...`);
         setTimeout(async () => {
@@ -192,18 +192,18 @@ async function getOrCreateClient(userId) {
     // Message Received
     client.on('message', async (message) => {
         console.log(`[${userId}] 📩 Message from ${message.from}: ${message.body.substring(0, 50)}`);
-        
+
         // Ignore own messages and status broadcasts
         if (message.from === 'status@broadcast') return;
         if (message.fromMe) return;
-        
+
         // Extract phone number (remove @c.us suffix)
         const phone = message.from.replace('@c.us', '').replace('@s.whatsapp.net', '');
-        
+
         // Get message content
         let body = message.body;
         let msgType = 'text';
-        
+
         if (message.hasMedia) {
             const media = await message.downloadMedia();
             if (media.mimetype.startsWith('audio/')) {
@@ -214,7 +214,7 @@ async function getOrCreateClient(userId) {
                 body = media.data;
             }
         }
-        
+
         // Forward to Laravel
         try {
             await axios.post(`${LARAVEL_URL}/api/whatsapp/webhook/automation`, {
@@ -230,7 +230,7 @@ async function getOrCreateClient(userId) {
                 },
                 timeout: 30000,
             });
-            
+
             console.log(`[${userId}] ✅ Message forwarded to Laravel`);
         } catch (err) {
             console.error(`[${userId}] ❌ Failed to forward message:`, err.message);
@@ -254,7 +254,7 @@ async function getOrCreateClient(userId) {
 async function disconnectClient(userId) {
     const key = String(userId);
     const clientData = clients.get(key);
-    
+
     if (clientData) {
         try {
             await clientData.client.destroy();
@@ -311,7 +311,7 @@ app.get('/health', (req, res) => {
             qrReady: data.qrReady,
         });
     });
-    
+
     res.json({
         status: 'running',
         uptime: process.uptime(),
@@ -327,14 +327,14 @@ app.get('/health', (req, res) => {
  */
 app.post('/connect', async (req, res) => {
     const { user_id } = req.body;
-    
+
     if (!user_id) {
         return res.status(400).json({ error: 'user_id is required' });
     }
-    
+
     try {
         const clientData = await getOrCreateClient(user_id);
-        
+
         res.json({
             status: clientData.status,
             qr_ready: clientData.qrReady,
@@ -354,11 +354,11 @@ app.post('/connect', async (req, res) => {
  */
 app.post('/disconnect', async (req, res) => {
     const { user_id } = req.body;
-    
+
     if (!user_id) {
         return res.status(400).json({ error: 'user_id is required' });
     }
-    
+
     try {
         await disconnectClient(user_id);
         res.json({ status: 'disconnected' });
@@ -374,28 +374,28 @@ app.post('/disconnect', async (req, res) => {
  */
 app.post('/send-message', async (req, res) => {
     const { user_id, phone, message } = req.body;
-    
+
     if (!user_id || !phone || !message) {
         return res.status(400).json({ error: 'user_id, phone, and message are required' });
     }
-    
+
     const key = String(user_id);
     const clientData = clients.get(key);
-    
+
     if (!clientData || clientData.status !== 'connected') {
-        return res.status(503).json({ 
+        return res.status(503).json({
             error: 'WhatsApp not connected',
             status: clientData?.status || 'not_found'
         });
     }
-    
+
     try {
         // Format phone number for WhatsApp Web.js (add @c.us)
         const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-        
+
         await clientData.client.sendMessage(chatId, message);
         console.log(`[${userId}] ✅ Message sent to ${phone}`);
-        
+
         res.json({ status: 'sent', to: phone });
     } catch (err) {
         console.error(`[${user_id}] Send message error:`, err);
@@ -410,18 +410,18 @@ app.post('/send-message', async (req, res) => {
  */
 app.post('/get-qr', async (req, res) => {
     const { user_id } = req.body;
-    
+
     if (!user_id) {
         return res.status(400).json({ error: 'user_id is required' });
     }
-    
+
     const key = String(user_id);
     const clientData = clients.get(key);
-    
+
     if (!clientData) {
         return res.status(404).json({ error: 'No client found. Call /connect first.' });
     }
-    
+
     res.json({
         status: clientData.status,
         qr_ready: clientData.qrReady,
@@ -437,14 +437,14 @@ app.post('/get-qr', async (req, res) => {
  */
 app.post('/status', async (req, res) => {
     const { user_id } = req.body;
-    
+
     if (!user_id) {
         return res.status(400).json({ error: 'user_id is required' });
     }
-    
+
     const key = String(user_id);
     const clientData = clients.get(key);
-    
+
     res.json({
         exists: !!clientData,
         status: clientData?.status || 'not_initialized',
