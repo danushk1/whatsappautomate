@@ -86,31 +86,35 @@ class NodeBridgeController extends Controller
         return response()->json(['status' => 'updated']);
     }
 
-    /**
-     * Node.js Bridge එකෙන් Connection Status Update කරන්න
-     */
     public function updateConnectionStatus(Request $request)
     {
         $request->validate([
             'user_id' => 'required|exists:users,id',
-            'connected' => 'required|boolean',
-            'phone' => 'nullable|string',
+            'event' => 'required|string',
         ]);
 
         $user = User::findOrFail($request->user_id);
+        $event = $request->event;
         
-        if ($request->connected) {
-            $user->whatsapp_number = $request->phone ?? $user->whatsapp_number;
+        if ($event === 'connected') {
+            if ($request->has('phone')) {
+                $user->whatsapp_number = $request->phone;
+            }
             $user->whatsapp_connected_at = now();
-        } else {
+            $user->whatsapp_qr_code_path = null;
+        } elseif ($event === 'disconnected' || $event === 'auth_failure') {
             $user->whatsapp_connected_at = null;
+        } elseif ($event === 'qr_generated') {
+            if ($request->has('qr_code_path')) {
+                $user->whatsapp_qr_code_path = $request->qr_code_path;
+            }
         }
         
         $user->save();
 
         Log::info("🔌 Connection Status Updated", [
             'user_id' => $user->id,
-            'connected' => $request->connected,
+            'event' => $event,
         ]);
 
         return response()->json(['status' => 'updated']);

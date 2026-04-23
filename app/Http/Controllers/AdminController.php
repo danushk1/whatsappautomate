@@ -31,6 +31,7 @@ class AdminController extends Controller
             'google_sheet_name' => 'nullable|string',
             'order_api_url' => 'nullable|string',
             'inventory_api_url' => 'nullable|string',
+            'connection_type' => 'nullable|in:cloud_api,web_automation',
         ]);
 
         User::create([
@@ -45,6 +46,7 @@ class AdminController extends Controller
             'google_sheet_name' => $request->google_sheet_name,
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
+            'connection_type' => $request->connection_type ?? 'web_automation',
         ]);
 
         return back()->with('success', 'New client created successfully.');
@@ -66,6 +68,7 @@ class AdminController extends Controller
             'order_api_url' => 'nullable|string',
             'inventory_api_url' => 'nullable|string',
             'target_mode' => 'nullable|in:EXCEL,API',
+            'connection_type' => 'required|in:cloud_api,web_automation',
         ]);
 
         $user->update([
@@ -79,6 +82,7 @@ class AdminController extends Controller
             'google_sheet_name' => $request->google_sheet_name,
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
+            'connection_type' => $request->connection_type,
         ]);
 
         return back()->with('success', 'User ' . $user->name . ' updated successfully.');

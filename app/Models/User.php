@@ -104,6 +104,9 @@ class User extends Authenticatable implements FilamentUser
             if (!isset($user->balance)) {
                 $user->balance = 500.0000;
             }
+            if (!isset($user->connection_type)) {
+                $user->connection_type = 'web_automation';
+            }
         });
     }
 }

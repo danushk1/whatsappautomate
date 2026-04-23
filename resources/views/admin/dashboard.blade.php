@@ -142,9 +142,16 @@
                         <input type="text" name="name" required class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
                     </div>
                     <div>
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Phone ID</label>
-                        <input type="text" name="whatsapp_phone_number_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Connection Method</label>
+                        <select name="connection_type" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition appearance-none">
+                            <option value="web_automation">📱 QR Scan Mode (Node.js)</option>
+                            <option value="cloud_api">☁️ Cloud API Mode (Meta)</option>
+                        </select>
                     </div>
+                </div>
+                <div class="mb-4">
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Phone ID (For Cloud API)</label>
+                    <input type="text" name="whatsapp_phone_number_id" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Login Email Address</label>
@@ -196,10 +203,13 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
-                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Business ID</label>
-                        <input type="text" name="whatsapp_phone_number_id" id="editWhatsAppId" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition">
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Connection Method</label>
+                        <select name="connection_type" id="editConnectionType" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition appearance-none">
+                            <option value="web_automation">📱 QR Scan Mode</option>
+                            <option value="cloud_api">☁️ Cloud API Mode</option>
+                        </select>
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Operational Status</label>
@@ -207,6 +217,13 @@
                             <option value="active">ACTIVE / LIVE</option>
                             <option value="inactive">INACTIVE / FROZEN</option>
                         </select>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 gap-4 mb-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">WhatsApp Business ID (For Cloud API)</label>
+                        <input type="text" name="whatsapp_phone_number_id" id="editWhatsAppId" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition">
                     </div>
                 </div>
 
@@ -255,7 +272,8 @@
         function openEditModal(user) {
             document.getElementById('editForm').action = "{{ url('/admin/users') }}/" + user.id + "/update";
             document.getElementById('editBalance').value = user.balance;
-            document.getElementById('editWhatsAppId').value = user.whatsapp_phone_number_id;
+            document.getElementById('editConnectionType').value = user.connection_type || 'web_automation';
+            document.getElementById('editWhatsAppId').value = user.whatsapp_phone_number_id || '';
             document.getElementById('editStatus').value = user.status;
             document.getElementById('editTargetApiKey').value = user.target_api_key || '';
             document.getElementById('editGoogleSheetName').value = user.google_sheet_name || '';
