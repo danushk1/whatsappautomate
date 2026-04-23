@@ -101,7 +101,7 @@ class DashboardController extends Controller
     public function initiateConnect(Request $request)
     {
         $user = Auth::user();
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://localhost:3000');
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://172.235.19.62:3000');
         $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {
@@ -143,7 +143,7 @@ class DashboardController extends Controller
     public function connectionStatus()
     {
         $user = Auth::user();
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://localhost:3000');
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://172.235.19.62:3000');
         $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {
@@ -184,7 +184,7 @@ class DashboardController extends Controller
     public function disconnectWhatsApp(Request $request)
     {
         $user = Auth::user();
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://localhost:3000');
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://172.235.19.62:3000');
         $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {

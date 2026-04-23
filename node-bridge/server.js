@@ -31,7 +31,7 @@ const { v4: uuidv4 } = require('uuid');
 
 // Load config from environment or use defaults
 const PORT = process.env.PORT || 3000;
-const LARAVEL_URL = process.env.LARAVEL_URL || 'http://localhost:8000';
+const LARAVEL_URL = process.env.LARAVEL_URL || 'http://172.235.19.62';
 const LARAVEL_API_KEY = process.env.LARAVEL_API_KEY || 'genify-node-bridge-secret-2026';
 const QR_CODE_DIR = process.env.QR_CODE_DIR || './public/qr-codes';
 const SESSION_DIR = process.env.SESSION_DIR || './sessions';

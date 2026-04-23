@@ -42,7 +42,7 @@ return [
     ],
 
     'node_bridge' => [
-        'url' => env('NODE_BRIDGE_URL', 'http://localhost:3000'),
+        'url' => env('NODE_BRIDGE_URL', 'http://172.235.19.62:3000'),
         'secret_key' => env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026'),
     ],
 ];
