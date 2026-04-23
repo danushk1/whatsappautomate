@@ -76,6 +76,7 @@ class User extends Authenticatable implements FilamentUser
         'is_active' => 'boolean',
         'is_autoreply_enabled' => 'boolean',
         'has_claimed_autoreply_bonus' => 'boolean',
+        'whatsapp_connected_at' => 'datetime',
     ];
 
     public function orders()
