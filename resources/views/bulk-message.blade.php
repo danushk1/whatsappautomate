@@ -99,12 +99,22 @@
 
                         <!-- Search & Controls -->
                         <div class="space-y-4 mb-4">
+                            <!-- Search -->
                             <div class="relative">
                                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                                     <svg class="h-4 w-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                                 </div>
                                 <input type="text" id="searchInput" onkeyup="filterContacts()" placeholder="Search by phone number..." 
                                     class="w-full bg-slate-900/50 border border-slate-700 rounded-xl pl-11 pr-4 py-3 text-sm text-white focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all placeholder-slate-600">
+                            </div>
+                            
+                            <!-- Manual Add -->
+                            <div class="flex items-center space-x-2">
+                                <input type="text" id="manualPhoneInput" placeholder="Add missing number (e.g. 9477...)" 
+                                    class="flex-1 bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-blue-500/50 outline-none transition-all placeholder-slate-600">
+                                <button type="button" onclick="addManualContact()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition shadow-lg shadow-blue-500/20 whitespace-nowrap">
+                                    + Add
+                                </button>
                             </div>
                             
                             <div class="flex items-center justify-between bg-slate-900/30 p-3 rounded-xl border border-slate-800/50">
@@ -124,7 +134,7 @@
                                         <input type="checkbox" name="contacts[]" value="{{ $contact->phone }}" onchange="updateCalculations()" checked 
                                             class="contact-checkbox w-4 h-4 text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700 rounded">
                                         <div>
-                                            <div class="text-sm font-bold text-white tracking-wide contact-phone">{{ $contact->phone }}</div>
+                                            <div class="text-sm font-bold text-white tracking-wide contact-phone">{{ explode('@', $contact->phone)[0] }}</div>
                                             <div class="text-[10px] text-slate-500 mt-0.5">Last msg: {{ $contact->last_messaged_at ? $contact->last_messaged_at->diffForHumans() : 'Unknown' }}</div>
                                         </div>
                                     </div>
@@ -133,12 +143,12 @@
                                     </div>
                                 </label>
                             @empty
-                                <div class="text-center py-10">
+                                <div id="noContactsMsg" class="text-center py-10">
                                     <div class="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-600">
                                         <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
                                     </div>
                                     <p class="text-sm font-bold text-slate-400">No contacts found.</p>
-                                    <p class="text-xs text-slate-500 mt-1">Wait for customers to message you first.</p>
+                                    <p class="text-xs text-slate-500 mt-1">Wait for customers to message you first, or add numbers manually.</p>
                                 </div>
                             @endforelse
                         </div>
@@ -274,6 +284,38 @@
                 document.getElementById('selectAllCheckbox').checked = false;
             }
             
+            updateCalculations();
+        }
+
+        function addManualContact() {
+            const input = document.getElementById('manualPhoneInput');
+            const phone = input.value.trim();
+            if (!phone) return;
+            
+            // Remove any spaces or non-numeric characters if needed, but allow basic format
+            const displayPhone = phone.split('@')[0];
+            
+            const html = `
+                <label class="contact-item flex items-center justify-between p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 cursor-pointer transition-all group mb-2">
+                    <div class="flex items-center space-x-4">
+                        <input type="checkbox" name="contacts[]" value="${phone}" onchange="updateCalculations()" checked 
+                            class="contact-checkbox w-4 h-4 text-emerald-500 focus:ring-emerald-500 bg-slate-900 border-slate-700 rounded">
+                        <div>
+                            <div class="text-sm font-bold text-white tracking-wide contact-phone">${displayPhone}</div>
+                            <div class="text-[10px] text-blue-400 mt-0.5 font-bold">Manually Added</div>
+                        </div>
+                    </div>
+                    <div class="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:bg-blue-500/30 transition-colors">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    </div>
+                </label>
+            `;
+            
+            const noMsg = document.getElementById('noContactsMsg');
+            if (noMsg) noMsg.style.display = 'none';
+
+            document.getElementById('contactsList').insertAdjacentHTML('afterbegin', html);
+            input.value = '';
             updateCalculations();
         }
 

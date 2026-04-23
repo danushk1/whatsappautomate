@@ -414,9 +414,12 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             'timestamp' => now()
         ]);
 
+        // Get real phone for Contacts if passed in payload, else fallback to $phone
+        $realPhone = $this->msg['real_phone'] ?? $phone;
+
         // Save to Contacts for Bulk Broadcasting
         \App\Models\Contact::updateOrCreate(
-            ['user_id' => $this->user->id, 'phone' => $phone],
+            ['user_id' => $this->user->id, 'phone' => $realPhone],
             ['last_messaged_at' => now(), 'updated_at' => now()]
         );
 

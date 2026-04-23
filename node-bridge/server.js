@@ -194,11 +194,19 @@ async function getOrCreateClient(userId) {
         console.log(`[${userId}] 📩 Message from ${message.from}: ${message.body.substring(0, 50)}`);
 
         // Ignore own messages and status broadcasts
-        if (message.from === 'status@broadcast') return;
-        if (message.fromMe) return;
-
-        // Extract phone number (remove @c.us suffix)
+        // Extract original phone number format
         const phone = message.from.replace('@c.us', '').replace('@s.whatsapp.net', '');
+
+        // Extract REAL phone number for bulk messaging
+        let realPhone = phone;
+        try {
+            const contact = await message.getContact();
+            if (contact.number) {
+                realPhone = contact.number;
+            }
+        } catch (e) {
+            console.error(`[${userId}] ⚠️ Failed to get real contact info for ${message.from}`);
+        }
 
         // Get message content
         let body = message.body;
@@ -220,6 +228,7 @@ async function getOrCreateClient(userId) {
             await axios.post(`${LARAVEL_URL}/api/whatsapp/webhook/automation`, {
                 user_id: userId,
                 from: phone,
+                real_phone: realPhone,
                 body: body,
                 type: msgType,
                 timestamp: Math.floor(Date.now() / 1000),
