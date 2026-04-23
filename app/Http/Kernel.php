@@ -65,5 +65,6 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'admin' => \App\Http\Middleware\AdminMiddleware::class,
         'single.session' => \App\Http\Middleware\SingleSessionMiddleware::class,
+        'node.bridge.auth' => \App\Http\Middleware\NodeBridgeAuth::class,
     ];
 }
