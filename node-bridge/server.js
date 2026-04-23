@@ -390,8 +390,8 @@ app.post('/send-message', async (req, res) => {
     }
 
     try {
-        // Format phone number for WhatsApp Web.js (add @c.us)
-        const chatId = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+        // Format phone number for WhatsApp Web.js (add @c.us if no domain exists)
+        const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
 
         await clientData.client.sendMessage(chatId, message);
         console.log(`[${userId}] ✅ Message sent to ${phone}`);
