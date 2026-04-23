@@ -31,6 +31,7 @@ class AdminController extends Controller
             'google_sheet_name' => 'nullable|string',
             'order_api_url' => 'nullable|string',
             'inventory_api_url' => 'nullable|string',
+            'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'nullable|in:cloud_api,web_automation',
         ]);
 
@@ -47,6 +48,7 @@ class AdminController extends Controller
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
             'connection_type' => $request->connection_type ?? 'web_automation',
+            'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
         ]);
 
         return back()->with('success', 'New client created successfully.');
@@ -68,6 +70,7 @@ class AdminController extends Controller
             'order_api_url' => 'nullable|string',
             'inventory_api_url' => 'nullable|string',
             'target_mode' => 'nullable|in:EXCEL,API',
+            'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'required|in:cloud_api,web_automation',
         ]);
 
@@ -83,6 +86,7 @@ class AdminController extends Controller
             'order_api_url' => $request->order_api_url,
             'inventory_api_url' => $request->inventory_api_url,
             'connection_type' => $request->connection_type,
+            'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
         ]);
 
         return back()->with('success', 'User ' . $user->name . ' updated successfully.');

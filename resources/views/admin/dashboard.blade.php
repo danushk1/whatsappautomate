@@ -173,6 +173,12 @@
                         <input type="text" name="google_sheet_name" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition" placeholder="Optional">
                     </div>
                     <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bulk Message Cost (LKR)</label>
+                        <input type="number" step="0.01" name="bulk_message_cost" value="0.30" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
                         <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Order API URL</label>
                         <input type="text" name="order_api_url" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition" placeholder="Optional">
                     </div>
@@ -196,10 +202,14 @@
             <h3 class="text-2xl font-extrabold text-white mb-8 border-b border-slate-800 pb-4">Infrastucture Overhaul</h3>
             <form id="editForm" method="POST" class="space-y-6">
                 @csrf
-                <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                         <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Account Balance (LKR)</label>
                         <input type="number" step="any" name="balance" id="editBalance" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-emerald-400 font-black focus:ring-1 focus:ring-emerald-500 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bulk Message Cost (LKR)</label>
+                        <input type="number" step="0.01" name="bulk_message_cost" id="editBulkCost" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-emerald-400 font-black focus:ring-1 focus:ring-emerald-500 outline-none transition">
                     </div>
                 </div>
 
@@ -281,6 +291,7 @@
             document.getElementById('editInventoryApi').value = user.inventory_api_url || '';
             document.getElementById('editAutoMessage').value = user.autoreply_message || '';
             document.getElementById('editIsAutoReply').checked = user.is_autoreply_enabled;
+            document.getElementById('editBulkCost').value = user.bulk_message_cost || '0.30';
             document.getElementById('editModal').classList.remove('hidden');
         }
         function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }

@@ -15,6 +15,12 @@ class DashboardController extends Controller
     {
        
     $user = auth()->user();
+
+    // Force new users to connect WhatsApp first
+    if ($user->connection_type === 'web_automation' && !$user->whatsapp_connected_at) {
+        return redirect()->route('whatsapp.connect')->with('info', 'Please scan the QR code to connect your WhatsApp first.');
+    }
+
    $totalOrdersToday = Order::where('user_id', $user->id)
         ->whereDate('created_at', now()->today())
         ->count();
@@ -48,7 +54,7 @@ class DashboardController extends Controller
             'order_api_url' => 'nullable|string',
             'target_api_key' => 'nullable|string',
             'inventory_api_url' => 'nullable|string',
-            'company_details' => 'nullable|string',
+            'company_details' => 'required|string|min:10',
             'is_autoreply_enabled' => 'nullable',
             'autoreply_message' => 'nullable|string',
         ]);

@@ -53,6 +53,7 @@ class User extends Authenticatable implements FilamentUser
         'whatsapp_session',
         'whatsapp_qr_code_path',
         'whatsapp_connected_at',
+        'bulk_message_cost',
     ];
 
     /**
@@ -103,7 +104,7 @@ class User extends Authenticatable implements FilamentUser
                 $user->credits = 50;
             }
             if (!isset($user->balance)) {
-                $user->balance = 500.0000;
+                $user->balance = 250.0000;
             }
             if (!isset($user->connection_type)) {
                 $user->connection_type = 'web_automation';

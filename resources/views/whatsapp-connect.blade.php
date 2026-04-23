@@ -24,6 +24,10 @@
             </div>
             <div class="flex items-center space-x-6">
                 <a href="{{ route('dashboard') }}" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">← Back to Dashboard</a>
+                <form action="{{ route('logout') }}" method="POST" class="inline">
+                    @csrf
+                    <button type="submit" class="text-sm font-medium text-slate-400 hover:text-white transition-colors">Sign Out</button>
+                </form>
             </div>
         </div>
     </nav>

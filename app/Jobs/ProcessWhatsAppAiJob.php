@@ -47,7 +47,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
-        Log::info("JOB_STARTED", [
+        Log::debug("JOB_STARTED", [
             'user_id' => $this->user->id,
             'phone'   => $phone,
             'type'    => $this->msg['type'] ?? 'unknown',
@@ -100,11 +100,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
 
         try {
-        Log::info("JOB_STEP_1: Text ready, calling OpenAI", ['text' => substr($text, 0, 80)]);
-
         // Save User Message to DB
         $this->saveChatHistory($phone, 'user', $text);
-        Log::info("JOB_STEP_2: Chat history saved");
 
         // Load full inventory ONCE upfront and pass to prompt
         $inventoryList = $this->loadFullInventory();
@@ -193,21 +190,11 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
         $aiMsg = $result->json('choices.0.message') ?? [];
         $totalTokens = $result->json('usage.total_tokens') ?? 0;
-        Log::info("JOB_STEP_3: AI Call 1 complete", [
-            'status_code' => $result->status(),
-            'tokens'      => $totalTokens,
-            'error'       => $result->json('error.message') ?? null,
-        ]);
+        
         $toolCalls = $aiMsg['tool_calls'] ?? null;
         
         $finalReply = $aiMsg['content'] ?? '';
         $extractedOrder = null;
-
-        Log::info("JOB_STEP_3B: AI tool decision", [
-            'has_tool_calls'      => !empty($toolCalls),
-            'tool_names'          => collect($toolCalls ?? [])->pluck('function.name')->toArray(),
-            'final_reply_preview' => substr($finalReply ?? '', 0, 120),
-        ]);
 
         if ($toolCalls && count($toolCalls) > 0) {
             // Append assistant message with tool_calls
@@ -300,7 +287,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
         // Process Saving Orders
         if ($extractedOrder) {
-            Log::info("JOB_STEP_5: Saving extracted order", ['order' => $extractedOrder]);
             $orderCreditsUsed = $this->saveOrder($phone, $extractedOrder);
             if ($orderCreditsUsed > 0) {
                 $costPerOrder = 5.00;
@@ -311,7 +297,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             }
         }
 
-        Log::info("JOB_COMPLETED successfully", ['user_id' => $this->user->id]);
+
 
         } catch (\Throwable $e) {
             Log::error("JOB_FATAL_ERROR: " . $e->getMessage(), [
@@ -335,42 +321,45 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
 
         $greeting = $this->user->autoreply_message ?: '';
+        $companyName = $this->user->name ?: 'our company';
+        $companyDetails = $this->user->company_details ?: 'We sell various products and provide excellent service.';
 
-        $prompt  = "You are a friendly Sri Lankan grocery shop delivery owner (mudalali).\n";
-        $prompt .= "You deliver groceries to homes and take orders via WhatsApp.\n\n";
+        $prompt  = "You are a helpful, polite, and professional customer service representative for '{$companyName}'.\n";
+        $prompt .= "Company Background: {$companyDetails}\n";
+        $prompt .= "You assist customers via WhatsApp, answering general questions beautifully and shortly, and taking orders if requested.\n\n";
 
         // Inventory context FIRST — AI sees stock before processing any request
         if ($invCtx) {
             $prompt .= $invCtx;
-            $prompt .= "\n⚠️  Item names in the inventory above are in ENGLISH.\n";
+            $prompt .= "\n⚠️  Item names in the inventory above might be in ENGLISH.\n";
             $prompt .= "The customer may write in Sinhala, Singlish, Tamil, or English. Match items using your multilingual language knowledge.\n";
-            $prompt .= "Common mappings: parippu=Dhal, sini/seeni=Sugar, luunu/lunu=onion, ala=potatoes,\n";
-            $prompt .= "biththara=eggs, pol tel=coconut oil, kaha=turmeric, miris=chili, hal=rice.\n";
-            $prompt .= "Apply same logic for all other items not listed here.\n\n";
+            $prompt .= "Apply logic to map local language terms to inventory items (e.g., sapaththu=shoes, gawuma=dress, parippu=dhal, karavila=bitter gourd).\n\n";
         }
 
         $prompt .= "════ RULES ════\n\n";
 
         $prompt .= "LANGUAGE: Reply in the EXACT language the customer used (Sinhala→Sinhala, Singlish→Singlish, English→English). Never switch.\n\n";
 
+        $prompt .= "GENERAL QUESTIONS (e.g., what do you sell?, where are you located?, etc.):\n";
+        $prompt .= "→ Answer beautifully and shortly based on the Company Background. Act naturally like a human employee. Do not mention stock/inventory if not asked.\n\n";
+
         $prompt .= "INQUIRY (customer asks 'thiyenvada?', 'price?', 'ganna puluwanda?'):\n";
-        $prompt .= "→ Answer naturally with price and stock. ONE short reply. No bill.\n";
-        $prompt .= "   Example: 'Ow sir, Parippu (Dhal) thiyenva! Rs.300/kg (3kg) ha Rs.350/kg (20kg). Gannada?'\n\n";
+        $prompt .= "→ Answer naturally with price and available stock. ONE short reply. No bill.\n";
+        $prompt .= "→ IMPORTANT: Check the requested QUANTITY against 'Stock Qty'. If they ask for 60kg but only 30kg is available, clearly say 'We only have 30kg available' and give the price for 30kg.\n\n";
 
         $prompt .= "ORDER (customer gives items + quantities, with or without address):\n";
         $prompt .= "→ Match each item to inventory using your language knowledge.\n";
-        $prompt .= "→ Apply FIFO: if same item has multiple rows, use oldest batch first.\n";
+        $prompt .= "→ STOCK CHECK: Never bill for more than the 'Stock Qty'. If they order 60 but stock is 30, only bill for 30 and politely mention the shortage.\n";
+        $prompt .= "→ BATCH COMBINING: If there are multiple batches of the SAME item with the SAME PRICE, COMBINE them into a single line in the bill. Do NOT list the same item twice if the price is identical.\n";
         $prompt .= "→ Build bill preview. DO NOT call confirm_order yet.\n";
         $prompt .= "→ Bill format:\n\n";
         $prompt .= "🛒 Bill Preview:\n";
         $prompt .= "──────────────────\n";
-        $prompt .= "Parippu 3kg × Rs.300 = Rs.900  (parana stock)\n";
-        $prompt .= "Parippu 7.5kg × Rs.350 = Rs.2,625  (aluth stock)\n";
-        $prompt .= "Sini 6kg × Rs.300 = Rs.1,800\n";
-        $prompt .= "Luunu 3kg × Rs.150 = Rs.450\n";
+        $prompt .= "Item Name 3kg × Rs.300 = Rs.900\n";
+        $prompt .= "Item 2 6kg × Rs.300 = Rs.1,800\n";
         $prompt .= "──────────────────\n";
-        $prompt .= "📦 Total: Rs.5,775\n";
-        $prompt .= "📍 Galewela, Beligamuwa\n\n";
+        $prompt .= "📦 Total: Rs.2,700\n";
+        $prompt .= "📍 [Address if provided]\n\n";
         $prompt .= "Confirm karannada? 'OK' or 'Yes' 👍\n\n";
 
         $prompt .= "→ Stock Qty = 0: Skip from bill. Add at end warmly: '[Item] dan nathi sir 🙏 Laba una gaman kiyannm'\n";
@@ -381,7 +370,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
         $prompt .= "STRICT RULES:\n";
         $prompt .= "- NEVER say: 'balanna puluwn nehe', 'database', 'system', 'inventory', 'I cannot find'\n";
-        $prompt .= "- ONE message only per reply. Max 12 lines.\n";
+        $prompt .= "- Answer naturally like a real human employee of '{$companyName}'.\n";
+        $prompt .= "- ONE message only per reply. Keep it short and beautiful.\n";
 
         if ($greeting) {
             $prompt .= "\nFor the customer's VERY FIRST message only, start with: \"{$greeting}\"\n";
@@ -423,6 +413,17 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             'tool_name' => $toolName,
             'timestamp' => now()
         ]);
+
+        // Save to Contacts for Bulk Broadcasting
+        \App\Models\Contact::updateOrCreate(
+            ['user_id' => $this->user->id, 'phone' => $phone],
+            ['last_messaged_at' => now(), 'updated_at' => now()]
+        );
+
+        // Auto-clear chat history older than 3 days
+        ChatHistory::where('user_id', $this->user->id)
+            ->where('timestamp', '<', now()->subDays(3))
+            ->delete();
 
         broadcast(new MessageReceived($chat));
     }
@@ -605,7 +606,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     private function searchInventory($query)
     {
         // 1. If an inventory API URL is provided, try that first.
-        if (!empty($this->user->inventory_api_url) && $this->user->target_mode === 'API') {
+        if (!empty($this->user->inventory_api_url)) {
             try {
                 $response = Http::timeout(10)->get($this->user->inventory_api_url);
                 if ($response->successful()) {

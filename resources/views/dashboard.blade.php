@@ -88,9 +88,15 @@
                     Operational
                 </span>
             </div>
-            <div class="glass-card p-6 rounded-3xl bg-emerald-500/5">
-                <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Plan Mode</p>
-                <span class="text-xl font-extrabold text-white">ENTERPRISE</span>
+            <div class="glass-card p-6 rounded-3xl bg-emerald-500/5 flex flex-col justify-between">
+                <div>
+                    <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Plan Mode</p>
+                    <span class="text-xl font-extrabold text-white">ENTERPRISE</span>
+                </div>
+                <a href="{{ route('bulk-message.index') }}" class="mt-4 inline-flex items-center justify-center bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-lg shadow-purple-500/20">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    Bulk Broadcast
+                </a>
             </div>
         </div>
 
@@ -269,10 +275,13 @@
                                     placeholder="Enter your company address">
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Company Information / Description</label>
-                                <textarea name="company_details" rows="6" 
+                                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Company Information / Description <span class="text-red-400">*</span></label>
+                                <textarea name="company_details" rows="6" required
                                     class="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none transition-all placeholder-slate-600"
-                                    placeholder="Briefly describe your company for better AI processing context...">{{ $user->company_details }}</textarea>
+                                    placeholder="Briefly describe your company for better AI processing context...">{{ old('company_details', $user->company_details) }}</textarea>
+                                @error('company_details')
+                                    <p class="text-red-400 text-xs mt-2">{{ $message }}</p>
+                                @enderror
                             </div>
                         </div>
 

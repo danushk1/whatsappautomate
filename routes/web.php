@@ -40,6 +40,9 @@ Route::middleware(['auth', 'single.session'])->group(function () {
     Route::post('/whatsapp/initiate-connect', [DashboardController::class, 'initiateConnect'])->name('whatsapp.initiate');
     Route::get('/whatsapp/connection-status', [DashboardController::class, 'connectionStatus'])->name('whatsapp.status');
     Route::post('/whatsapp/disconnect', [DashboardController::class, 'disconnectWhatsApp'])->name('whatsapp.disconnect');
+    // Bulk Broadcasting
+    Route::get('/bulk-message', [\App\Http\Controllers\BulkMessageController::class, 'index'])->name('bulk-message.index');
+    Route::post('/bulk-message/send', [\App\Http\Controllers\BulkMessageController::class, 'send'])->name('bulk-message.send');
 });
 
 // Admin Routes
