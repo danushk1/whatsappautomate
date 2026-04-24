@@ -195,7 +195,7 @@ async function getOrCreateClient(userId) {
 
         // Ignore own messages and status broadcasts
         // Extract original phone number format
-        const phone = message.from.replace('@c.us', '').replace('@s.whatsapp.net', '').replace('@lid', '');
+        const phone = message.from.replace('@c.us', '').replace('@s.whatsapp.net', '');
 
         // Extract REAL phone number for bulk messaging
         let realPhone = phone;
@@ -252,7 +252,7 @@ async function getOrCreateClient(userId) {
         
         console.log(`[${userId}] 📤 Outgoing message to ${message.to}: ${message.body.substring(0, 50)}`);
 
-        const phone = message.to.replace('@c.us', '').replace('@s.whatsapp.net', '').replace('@lid', '');
+        const phone = message.to.replace('@c.us', '').replace('@s.whatsapp.net', '');
         let realPhone = phone;
         let body = message.body;
         let msgType = 'text';
