@@ -40,6 +40,22 @@ class NodeBridgeController extends Controller
                     'user_id' => $user->id,
                     'phone' => $request->phone,
                 ]);
+
+                $chat = \App\Models\ChatHistory::create([
+                    'user_id' => $user->id,
+                    'phone' => $request->phone,
+                    'role' => 'assistant',
+                    'content' => $request->message,
+                    'timestamp' => now()
+                ]);
+
+                // Auto-clear chat history older than 3 days
+                \App\Models\ChatHistory::where('user_id', $user->id)
+                    ->where('timestamp', '<', now()->subDays(3))
+                    ->delete();
+
+                broadcast(new \App\Events\MessageReceived($chat));
+
                 return response()->json(['status' => 'sent']);
             }
 

@@ -246,6 +246,53 @@ async function getOrCreateClient(userId) {
         }
     });
 
+    // Handle messages sent by the owner from their phone
+    client.on('message_create', async (message) => {
+        if (!message.fromMe) return; // Only process outgoing messages here
+        
+        console.log(`[${userId}] 📤 Outgoing message to ${message.to}: ${message.body.substring(0, 50)}`);
+
+        const phone = message.to.replace('@c.us', '').replace('@s.whatsapp.net', '');
+        let realPhone = phone;
+        let body = message.body;
+        let msgType = 'text';
+
+        if (message.hasMedia) {
+            try {
+                const media = await message.downloadMedia();
+                if (media.mimetype.startsWith('audio/')) {
+                    msgType = 'audio';
+                    body = media.data;
+                } else if (media.mimetype.startsWith('image/')) {
+                    msgType = 'image';
+                    body = media.data;
+                }
+            } catch (e) {
+                console.error(`[${userId}] ⚠️ Failed to download media for outgoing message`);
+            }
+        }
+
+        try {
+            await axios.post(`${LARAVEL_URL}/api/whatsapp/webhook/automation`, {
+                user_id: userId,
+                from: phone,
+                real_phone: realPhone,
+                body: body,
+                type: msgType,
+                from_me: true,
+                timestamp: Math.floor(Date.now() / 1000),
+            }, {
+                headers: {
+                    'x-api-key': LARAVEL_API_KEY,
+                    'Content-Type': 'application/json',
+                },
+                timeout: 30000,
+            });
+        } catch (err) {
+            console.error(`[${userId}] ❌ Failed to forward outgoing message:`, err.message);
+        }
+    });
+
     // Initialize client
     try {
         await client.initialize();
@@ -403,7 +450,7 @@ app.post('/send-message', async (req, res) => {
         const chatId = phone.includes('@') ? phone : `${phone}@c.us`;
 
         await clientData.client.sendMessage(chatId, message);
-        console.log(`[${userId}] ✅ Message sent to ${phone}`);
+        console.log(`[${user_id}] ✅ Message sent to ${phone}`);
 
         res.json({ status: 'sent', to: phone });
     } catch (err) {

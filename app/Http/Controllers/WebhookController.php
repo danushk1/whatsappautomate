@@ -69,6 +69,22 @@ class WebhookController extends Controller
             return response()->json(['error' => 'Missing required fields'], 400);
         }
 
+        // If the message was sent by the owner from their phone, just save it to chat history and stop.
+        if (!empty($payload['from_me']) && $payload['from_me'] == true) {
+            $user = User::find($userId);
+            if ($user && $body) {
+                $chat = \App\Models\ChatHistory::create([
+                    'user_id' => $user->id,
+                    'phone' => $from,
+                    'role' => 'assistant',
+                    'content' => $body,
+                    'timestamp' => now()
+                ]);
+                broadcast(new \App\Events\MessageReceived($chat));
+            }
+            return response()->json(['status' => 'saved'], 200);
+        }
+
         $user = User::find($userId);
         if (!$user) {
             Log::warning('Automation webhook: User not found', ['user_id' => $userId]);
