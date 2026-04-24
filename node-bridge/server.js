@@ -55,6 +55,8 @@ app.use(express.static('public'));
 
 // Store active WhatsApp clients per user
 const clients = new Map(); // Map<user_id, { client, status, qrReady }>
+// Cache mapping from @lid to real phone number
+const lidToRealPhone = new Map(); 
 
 // ============================================
 // WHATSAPP CLIENT MANAGEMENT
@@ -203,6 +205,10 @@ async function getOrCreateClient(userId) {
             const contact = await message.getContact();
             if (contact.number) {
                 realPhone = contact.number;
+                // Cache the mapping so we can reply using the real phone
+                if (phone.includes('@lid')) {
+                    lidToRealPhone.set(phone, realPhone);
+                }
             }
         } catch (e) {
             console.error(`[${userId}] ⚠️ Failed to get real contact info for ${message.from}`);
@@ -446,8 +452,15 @@ app.post('/send-message', async (req, res) => {
     }
 
     try {
+        // Resolve @lid using our memory cache if necessary
+        let actualPhone = phone;
+        if (phone.includes('@lid') && lidToRealPhone.has(phone)) {
+            actualPhone = lidToRealPhone.get(phone);
+            console.log(`[${user_id}] Resolved ${phone} to ${actualPhone}`);
+        }
+
         // Format phone number for WhatsApp Web.js (strip @lid and add @c.us if no domain exists)
-        let formattedPhone = phone.replace('@lid', '');
+        let formattedPhone = actualPhone.replace('@lid', '');
         const chatId = formattedPhone.includes('@') ? formattedPhone : `${formattedPhone}@c.us`;
 
         await clientData.client.sendMessage(chatId, message);
