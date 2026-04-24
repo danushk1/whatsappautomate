@@ -201,6 +201,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 'tool_choice' => 'auto'
             ]);
 
+        if (!$result->successful()) {
+            Log::error("❌ OpenAI API Error (1st Call): " . $result->body());
+        }
+
         $aiMsg = $result->json('choices.0.message') ?? [];
         $totalTokens = $result->json('usage.total_tokens') ?? 0;
         
@@ -261,6 +265,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     'model' => 'gpt-4o-mini',
                     'messages' => $messages
                 ]);
+            if (!$finalResult->successful()) {
+                Log::error("❌ OpenAI API Error (2nd Call): " . $finalResult->body());
+            }
+
             $aiMsg = $finalResult->json('choices.0.message') ?? [];
             $totalTokens += $finalResult->json('usage.total_tokens') ?? 0;
             $finalReply = $aiMsg['content'] ?? '';
