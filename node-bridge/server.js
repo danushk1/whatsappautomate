@@ -87,6 +87,7 @@ async function getOrCreateClient(userId) {
         }),
         puppeteer: {
             headless: true,
+            protocolTimeout: 120000,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
