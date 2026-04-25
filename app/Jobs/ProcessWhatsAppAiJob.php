@@ -458,9 +458,18 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         // Inventory context FIRST — AI sees stock before processing any request
         if ($invCtx) {
             $prompt .= $invCtx;
-            $prompt .= "\n⚠️  Item names in the inventory above might be in ENGLISH.\n";
-            $prompt .= "The customer may write in Sinhala, Singlish, Tamil, or English. Match items using your multilingual language knowledge.\n";
-            $prompt .= "Apply logic to map local language terms to inventory items (e.g., sapaththu=shoes, gawuma=dress, parippu=dhal, karavila=bitter gourd).\n\n";
+            $prompt .= "\n════ PRODUCT NAME TRANSLATION — CRITICAL ════\n";
+            $prompt .= "The inventory table above uses STORED item names (may be English, Sinhala, or mixed).\n";
+            $prompt .= "Customers write in Sinhala / Singlish / Tamil / English.\n";
+            $prompt .= "BEFORE calling search_inventory, you MUST translate the customer's term to the EXACT name shown in the inventory table above.\n";
+            $prompt .= "Examples:\n";
+            $prompt .= "  customer says 'parippu'  → table shows 'Dhal'     → call search_inventory(\"Dhal\")\n";
+            $prompt .= "  customer says 'sini'     → table shows 'Sugar'    → call search_inventory(\"Sugar\")\n";
+            $prompt .= "  customer says 'ala'      → table shows 'potatoes' → call search_inventory(\"potatoes\")\n";
+            $prompt .= "  customer says 'lunu'     → table shows 'onion'    → call search_inventory(\"onion\")\n";
+            $prompt .= "⛔ NEVER call search_inventory with the customer's raw Sinhala/Tamil word.\n";
+            $prompt .= "✅ ALWAYS use the EXACT name from the inventory table.\n";
+            $prompt .= "If you cannot find a match in the table, ask the customer to clarify — do not guess.\n\n";
         }
 
         $prompt .= "════ RULES ════\n\n";
@@ -471,11 +480,13 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         $prompt .= "→ Answer beautifully and shortly based on the Company Background. Act naturally like a human employee. Do not mention stock/inventory if not asked.\n\n";
 
         $prompt .= "INQUIRY (customer asks 'thiyenvada?', 'price?', 'ganna puluwanda?', 'how much?'):\n";
-        $prompt .= "→ ALWAYS call search_inventory FIRST. NEVER state a price or stock from memory.\n";
+        $prompt .= "→ Translate customer term to inventory name → THEN call search_inventory with that name.\n";
+        $prompt .= "→ NEVER state a price or stock from memory — always fetch live.\n";
         $prompt .= "→ Answer naturally with price and available stock. ONE short reply. No bill.\n";
-        $prompt .= "→ IMPORTANT: Check the requested QUANTITY against 'Stock Qty'. If they ask for 60kg but only 30kg is available, clearly say 'We only have 30kg available' and give the price for 30kg.\n\n";
+        $prompt .= "→ IMPORTANT: Check the requested QUANTITY against 'Stock Qty'. If they ask for 60kg but only 30kg is available, clearly say 'We only have 30kg available'.\n\n";
 
         $prompt .= "ORDER (customer gives items + quantities):\n";
+        $prompt .= "→ Translate EACH customer item name to its inventory name → THEN call search_inventory for each.\n";
         $prompt .= "→ ALWAYS call search_inventory FIRST to get accurate live price and stock.\n";
         $prompt .= "→ Match each item to inventory using your multilingual knowledge.\n";
         $prompt .= "→ STOCK CHECK: Never bill for more than the 'Stock Qty'. If they order 60 but stock is 30, only bill for 30 and politely mention the shortage.\n";
