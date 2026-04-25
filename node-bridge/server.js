@@ -523,6 +523,45 @@ app.post('/status', async (req, res) => {
     });
 });
 
+/**
+ * POST /typing
+ * Send a "typing..." indicator to a chat (called by Laravel before AI reply)
+ * Body: { user_id: number, phone: string }
+ */
+app.post('/typing', async (req, res) => {
+    const { user_id, phone } = req.body;
+
+    if (!user_id || !phone) {
+        return res.status(400).json({ error: 'user_id and phone are required' });
+    }
+
+    const key = String(user_id);
+    const clientData = clients.get(key);
+
+    if (!clientData || clientData.status !== 'connected') {
+        return res.status(503).json({ error: 'WhatsApp not connected' });
+    }
+
+    try {
+        let actualPhone = phone;
+        if (phone.includes('@lid') && lidToRealPhone.has(phone)) {
+            actualPhone = lidToRealPhone.get(phone);
+        }
+
+        let formattedPhone = actualPhone.replace('@lid', '');
+        const chatId = formattedPhone.includes('@') ? formattedPhone : `${formattedPhone}@c.us`;
+
+        const chat = await clientData.client.getChatById(chatId);
+        await chat.sendStateTyping();
+
+        res.json({ status: 'typing' });
+    } catch (err) {
+        // Non-critical — don't let typing failure surface as an error to the caller
+        console.warn(`[${user_id}] Typing indicator failed (non-critical):`, err.message);
+        res.json({ status: 'skipped', reason: err.message });
+    }
+});
+
 // ============================================
 // START SERVER
 // ============================================
@@ -544,6 +583,7 @@ app.listen(PORT, () => {
 ║     POST /send-message                    ║
 ║     POST /get-qr                          ║
 ║     POST /status                          ║
+║     POST /typing                          ║
 ╚═══════════════════════════════════════════╝
     `);
 });

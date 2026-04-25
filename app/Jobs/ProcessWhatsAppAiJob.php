@@ -26,9 +26,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     protected $msg;
     protected $user;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(array $payload, array $msg, User $user)
     {
         $this->payload = $payload;
@@ -36,9 +33,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         $this->user = $user;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle()
     {
         $phone = $this->msg['from'] ?? null;
@@ -47,27 +41,22 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
-        Log::debug("JOB_STARTED", [
-            'user_id' => $this->user->id,
-            'phone'   => $phone,
-            'type'    => $this->msg['type'] ?? 'unknown',
-            'balance' => $this->user->balance,
-            'autoreply' => $this->user->is_autoreply_enabled,
-            'has_api_key' => !empty($this->user->target_api_key),
-            'has_sheet' => !empty($this->user->google_sheet_name),
-        ]);
-
         // Enforce Free Plan Limits (Max 3 Contacts)
         $realPhone = $this->msg['real_phone'] ?? $phone;
         if ($this->user->plan_type === 'free') {
             $contactCount = \App\Models\Contact::where('user_id', $this->user->id)->count();
             $contactExists = \App\Models\Contact::where('user_id', $this->user->id)->where('phone', $realPhone)->exists();
-            
-            // If they have 3 or more contacts, and this is a NEW contact, silently drop the message
+
             if (!$contactExists && $contactCount >= 3) {
-                Log::info("Free plan limit reached for user {$this->user->id}. Ignored message from new contact {$realPhone}.");
+                Log::info("Free plan contact limit reached for user {$this->user->id}. Ignored message from {$realPhone}.");
                 return;
             }
+        }
+
+        // Daily rate limit: free plan = max 50 messages per contact per day
+        if ($this->hasExceededDailyLimit($phone)) {
+            Log::info("RATE_LIMIT: Daily limit reached for user {$this->user->id}, phone {$phone}");
+            return;
         }
 
         // Initialize variables
@@ -76,7 +65,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         // Silent mode = no reply, only extract order (when auto-reply is OFF or balance is depleted)
         $isSilentExtraction = !$this->user->is_autoreply_enabled || ($this->user->balance <= 0);
 
-        // 1. Check if Audio
+        // Detect new customer: no chat history in the last 3 days
+        $isNewCustomer = $this->isNewCustomer($phone);
+
+        // Check if Audio
         $msgType = $this->msg['type'] ?? 'text';
         if ($msgType === 'audio') {
             $audioId = $this->msg['audio']['id'] ?? null;
@@ -85,7 +77,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     $localPath = $mediaService->downloadMedia($audioId, $this->user->target_api_key);
                     Log::info("Downloaded Audio for parsing: {$localPath}");
 
-                    // Transcribe Audio using OpenAI Whisper Native HTTP
                     $response = Http::withToken(env('OPENAI_API_KEY'))
                         ->withoutVerifying()
                         ->attach('file', file_get_contents($localPath), 'audio.ogg')
@@ -95,12 +86,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
                     $text = $response->json('text') ?? '';
                     Log::info("Transcribed Audio: {$text}");
-
-                    // Clean up downloaded file
                     unlink($localPath);
                 } catch (Exception $e) {
                     Log::error("Failed to parse audio: " . $e->getMessage());
-                    return; // Ignore message if we can't parse it
+                    return;
                 }
             }
         } elseif ($msgType === 'text') {
@@ -113,212 +102,235 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
 
         try {
-        // Save User Message to DB
-        $this->saveChatHistory($phone, 'user', $text);
+            // Save User Message to DB
+            $this->saveChatHistory($phone, 'user', $text);
 
-        // Load full inventory ONCE upfront and pass to prompt
-        $inventoryList = $this->loadFullInventory();
+            // Send typing indicator (web_automation only, best-effort — shows AI is "thinking")
+            $this->sendTypingIndicator($phone);
 
-        // Assemble Prompt
-        $systemPrompt = $this->getSystemPrompt($isSilentExtraction, $inventoryList);
+            // Load full inventory ONCE upfront and pass to prompt
+            $inventoryList = $this->loadFullInventory();
 
-        // Fetch History
-        $history = ChatHistory::where('user_id', $this->user->id)
-            ->where('phone', $phone)
-            ->where('timestamp', '>', now()->subHours(24))
-            ->orderBy('timestamp', 'asc')
-            ->get()
-            ->map(function ($item) {
-                $msg = [
-                    'role' => $item->role,
-                    'content' => $item->content ?? '',
-                ];
-                if ($item->tool_call_id) {
-                    $msg['tool_call_id'] = $item->tool_call_id;
-                    $msg['name'] = $item->tool_name;
-                }
-                return $msg;
-            })->toArray();
+            // Assemble Prompt — passes new-customer flag for dynamic greeting
+            $systemPrompt = $this->getSystemPrompt($isSilentExtraction, $inventoryList, $isNewCustomer);
 
-        $messages = [
-            ['role' => 'system', 'content' => $systemPrompt]
-        ];
-        $messages = array_merge($messages, $history);
-        $messages[] = ['role' => 'user', 'content' => $text];
+            // Fetch last 3 days of history (changed from 24h to full 3-day window)
+            $history = ChatHistory::where('user_id', $this->user->id)
+                ->where('phone', $phone)
+                ->where('timestamp', '>', now()->subDays(3))
+                ->orderBy('timestamp', 'asc')
+                ->get()
+                ->map(function ($item) {
+                    $msg = [
+                        'role'    => $item->role,
+                        'content' => $item->content ?? '',
+                    ];
+                    if ($item->tool_call_id) {
+                        $msg['tool_call_id'] = $item->tool_call_id;
+                        $msg['name']         = $item->tool_name;
+                    }
+                    return $msg;
+                })->toArray();
 
-        // Tools
-        $tools = [
-            [
-                "type" => "function",
-                "function" => [
-                    "name" => "confirm_order",
-                    "description" => "Saves the order when prices are clear or agreed.",
-                    "parameters" => [
-                        "type" => "object",
-                        "properties" => [
-                            "items" => [
-                                "type" => "array",
+            $messages   = [['role' => 'system', 'content' => $systemPrompt]];
+            $messages   = array_merge($messages, $history);
+            $messages[] = ['role' => 'user', 'content' => $text];
+
+            // Tools
+            $tools = [
+                [
+                    "type" => "function",
+                    "function" => [
+                        "name"        => "confirm_order",
+                        "description" => "Saves the confirmed order to the system. ONLY call this AFTER the customer has confirmed the bill AND provided their delivery address. Both items and address are mandatory.",
+                        "parameters"  => [
+                            "type"       => "object",
+                            "properties" => [
                                 "items" => [
-                                    "type" => "object",
-                                    "properties" => [
-                                        "name" => ["type" => "string"],
-                                        "quantity" => ["type" => "number"],
-                                        "price_breakdown" => ["type" => "string"],
-                                        "total_price" => ["type" => "number"]
-                                    ]
-                                ]
+                                    "type"  => "array",
+                                    "items" => [
+                                        "type"       => "object",
+                                        "properties" => [
+                                            "name"            => ["type" => "string"],
+                                            "quantity"        => ["type" => "number"],
+                                            "price_breakdown" => ["type" => "string"],
+                                            "total_price"     => ["type" => "number"],
+                                        ],
+                                    ],
+                                ],
+                                "address" => [
+                                    "type"        => "string",
+                                    "description" => "Customer delivery address. Mandatory — do NOT call confirm_order without this.",
+                                ],
                             ],
-                            "address" => ["type" => "string"]
+                            "required" => ["items", "address"],
                         ],
-                        "required" => ["items"]
-                    ]
-                ]
-            ],
-            [
-                "type" => "function",
-                "function" => [
-                    "name" => "search_inventory",
-                    "description" => "Search inventory to match local names to English items and retrieve product details.",
-                    "parameters" => [
-                        "type" => "object",
-                        "properties" => [
-                            "query" => ["type" => "string", "description" => "The item name to search for."]
+                    ],
+                ],
+                [
+                    "type" => "function",
+                    "function" => [
+                        "name"        => "search_inventory",
+                        "description" => "Search inventory for product details (price, stock, availability). ALWAYS call this before answering ANY question about products, prices, or stock. Never use memory for price/stock.",
+                        "parameters"  => [
+                            "type"       => "object",
+                            "properties" => [
+                                "query" => [
+                                    "type"        => "string",
+                                    "description" => "The item name to search for.",
+                                ],
+                            ],
+                            "required" => ["query"],
                         ],
-                        "required" => ["query"]
-                    ]
-                ]
-            ]
-        ];
+                    ],
+                ],
+                [
+                    "type" => "function",
+                    "function" => [
+                        "name"        => "get_order_history",
+                        "description" => "Retrieve the last 5 confirmed orders for this customer. Call when the customer asks about previous orders, order history, or past purchases.",
+                        "parameters"  => [
+                            "type"       => "object",
+                            "properties" => (object)[],
+                            "required"   => [],
+                        ],
+                    ],
+                ],
+            ];
 
-        // 1st AI Call Native HTTP
-        $result = Http::withToken(env('OPENAI_API_KEY'))
-            ->withoutVerifying()
-            ->timeout(60)
-            ->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-4o-mini',
-                'messages' => $messages,
-                'tools' => $tools,
-                'tool_choice' => 'auto'
-            ]);
-
-        if (!$result->successful()) {
-            Log::error("❌ OpenAI API Error (1st Call): " . $result->body());
-        }
-
-        $aiMsg = $result->json('choices.0.message') ?? [];
-        $totalTokens = $result->json('usage.total_tokens') ?? 0;
-        
-        $toolCalls = $aiMsg['tool_calls'] ?? null;
-        
-        $finalReply = $aiMsg['content'] ?? '';
-        $extractedOrder = null;
-
-        if ($toolCalls && count($toolCalls) > 0) {
-            // Append assistant message with tool_calls
-            $assistantToolMsg = ['role' => 'assistant', 'tool_calls' => []];
-            foreach ($toolCalls as $tc) {
-                $assistantToolMsg['tool_calls'][] = [
-                    'id' => $tc['id'],
-                    'type' => 'function',
-                    'function' => [
-                        'name' => $tc['function']['name'],
-                        'arguments' => $tc['function']['arguments']
-                    ]
-                ];
-            }
-            $messages[] = $assistantToolMsg;
-
-            // Handle Tools
-            foreach ($toolCalls as $toolCall) {
-                if ($toolCall['function']['name'] === "search_inventory") {
-                    $args = json_decode($toolCall['function']['arguments'], true);
-                    $query = $args['query'] ?? '';
-                    
-                    // Call Laravel inventory logic
-                    $searchResults = $this->searchInventory($query);
-                    $contentStr = json_encode($searchResults);
-
-                    $messages[] = [
-                        'role' => 'tool',
-                        'tool_call_id' => $toolCall['id'],
-                        'name' => 'search_inventory',
-                        'content' => $contentStr
-                    ];
-                } elseif ($toolCall['function']['name'] === "confirm_order") {
-                    $args = json_decode($toolCall['function']['arguments'], true);
-                    $extractedOrder = $args;
-                    
-                    $messages[] = [
-                        'role' => 'tool',
-                        'tool_call_id' => $toolCall['id'],
-                        'name' => 'confirm_order',
-                        'content' => json_encode(["status" => "processing"])
-                    ];
-                }
-            }
-
-            // 2nd AI Call Native HTTP
-            $finalResult = Http::withToken(env('OPENAI_API_KEY'))
+            // 1st AI Call
+            $result = Http::withToken(env('OPENAI_API_KEY'))
                 ->withoutVerifying()
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => 'gpt-4o-mini',
-                    'messages' => $messages
+                    'model'       => 'gpt-4o-mini',
+                    'messages'    => $messages,
+                    'tools'       => $tools,
+                    'tool_choice' => 'auto',
                 ]);
-            if (!$finalResult->successful()) {
-                Log::error("❌ OpenAI API Error (2nd Call): " . $finalResult->body());
+
+            if (!$result->successful()) {
+                Log::error("❌ OpenAI API Error (1st Call): " . $result->body());
             }
 
-            $aiMsg = $finalResult->json('choices.0.message') ?? [];
-            $totalTokens += $finalResult->json('usage.total_tokens') ?? 0;
-            $finalReply = $aiMsg['content'] ?? '';
-        }
+            $aiMsg      = $result->json('choices.0.message') ?? [];
+            $totalTokens = $result->json('usage.total_tokens') ?? 0;
 
-        // If silent and empty reply, fallback for auto response based on extraction
-        if ($extractedOrder && !$finalReply) {
-            $itemNames = collect($extractedOrder['items'] ?? [])->pluck('name')->implode(', ');
-            $totalVal = collect($extractedOrder['items'] ?? [])->sum('total_price');
-            $finalReply = "හරි, ඔයා ඉල්ලපු {$itemNames} ඇණවුම මම සටහන් කරගත්තා. මුළු මුදල රු. {$totalVal}. ඉක්මනින්ම එවන්නම්.";
-        }
+            $toolCalls      = $aiMsg['tool_calls'] ?? null;
+            $finalReply     = $aiMsg['content'] ?? '';
+            $extractedOrder = null;
 
-        if ($isSilentExtraction) {
-            $finalReply = ''; // Force silence
-        }
+            if ($toolCalls && count($toolCalls) > 0) {
+                // Append assistant message with tool_calls
+                $assistantToolMsg = ['role' => 'assistant', 'tool_calls' => []];
+                foreach ($toolCalls as $tc) {
+                    $assistantToolMsg['tool_calls'][] = [
+                        'id'       => $tc['id'],
+                        'type'     => 'function',
+                        'function' => [
+                            'name'      => $tc['function']['name'],
+                            'arguments' => $tc['function']['arguments'],
+                        ],
+                    ];
+                }
+                $messages[] = $assistantToolMsg;
 
-        // Perform Meta Send
-        if (!empty($finalReply)) {
-            $this->sendWhatsApp(
-                $phone, 
-                $this->user->target_api_key, 
-                $this->payload['entry'][0]['changes'][0]['value']['metadata']['phone_number_id'] ?? null, 
-                $finalReply
-            );
-            $this->saveChatHistory($phone, 'assistant', $finalReply);
-            
-            // Deduct AI Token cost from LKR Balance
-            if ($this->user->is_autoreply_enabled) {
-                $costPerToken = 0.0001; // Rs. 0.0001 per token (Rs 100 per 1M tokens)
-                if (isset($totalTokens)) {
-                    $tokenDeduction = $totalTokens * $costPerToken;
+                // Handle each tool call
+                foreach ($toolCalls as $toolCall) {
+                    if ($toolCall['function']['name'] === 'search_inventory') {
+                        $args    = json_decode($toolCall['function']['arguments'], true);
+                        $query   = $args['query'] ?? '';
+                        $results = $this->searchInventory($query);
+
+                        $messages[] = [
+                            'role'         => 'tool',
+                            'tool_call_id' => $toolCall['id'],
+                            'name'         => 'search_inventory',
+                            'content'      => json_encode($results),
+                        ];
+
+                    } elseif ($toolCall['function']['name'] === 'confirm_order') {
+                        $args           = json_decode($toolCall['function']['arguments'], true);
+                        $extractedOrder = $args;
+
+                        $messages[] = [
+                            'role'         => 'tool',
+                            'tool_call_id' => $toolCall['id'],
+                            'name'         => 'confirm_order',
+                            'content'      => json_encode(['status' => 'processing']),
+                        ];
+
+                    } elseif ($toolCall['function']['name'] === 'get_order_history') {
+                        $orderHistory = $this->getOrderHistory($phone);
+
+                        $messages[] = [
+                            'role'         => 'tool',
+                            'tool_call_id' => $toolCall['id'],
+                            'name'         => 'get_order_history',
+                            'content'      => json_encode($orderHistory),
+                        ];
+                    }
+                }
+
+                // 2nd AI Call
+                $finalResult = Http::withToken(env('OPENAI_API_KEY'))
+                    ->withoutVerifying()
+                    ->timeout(60)
+                    ->post('https://api.openai.com/v1/chat/completions', [
+                        'model'    => 'gpt-4o-mini',
+                        'messages' => $messages,
+                    ]);
+
+                if (!$finalResult->successful()) {
+                    Log::error("❌ OpenAI API Error (2nd Call): " . $finalResult->body());
+                }
+
+                $aiMsg        = $finalResult->json('choices.0.message') ?? [];
+                $totalTokens += $finalResult->json('usage.total_tokens') ?? 0;
+                $finalReply   = $aiMsg['content'] ?? '';
+            }
+
+            // Fallback reply if order extracted silently but no text generated
+            if ($extractedOrder && !$finalReply) {
+                $itemNames  = collect($extractedOrder['items'] ?? [])->pluck('name')->implode(', ');
+                $totalVal   = collect($extractedOrder['items'] ?? [])->sum('total_price');
+                $finalReply = "හරි, ඔයා ඉල්ලපු {$itemNames} ඇණවුම මම සටහන් කරගත්තා. මුළු මුදල රු. {$totalVal}. ඉක්මනින්ම එවන්නම්.";
+            }
+
+            if ($isSilentExtraction) {
+                $finalReply = '';
+            }
+
+            // Send reply
+            if (!empty($finalReply)) {
+                $this->sendWhatsApp(
+                    $phone,
+                    $this->user->target_api_key,
+                    $this->payload['entry'][0]['changes'][0]['value']['metadata']['phone_number_id'] ?? null,
+                    $finalReply
+                );
+                $this->saveChatHistory($phone, 'assistant', $finalReply);
+
+                // Deduct AI token cost from LKR balance
+                if ($this->user->is_autoreply_enabled) {
+                    $costPerToken    = 0.0001;
+                    $tokenDeduction  = $totalTokens * $costPerToken;
                     $this->user->balance = max(0, $this->user->balance - $tokenDeduction);
                     $this->user->save();
                 }
             }
-        }
 
-        // Process Saving Orders
-        if ($extractedOrder) {
-            $orderCreditsUsed = $this->saveOrder($phone, $extractedOrder);
-            if ($orderCreditsUsed > 0) {
-                $costPerOrder = 5.00;
-                $orderDeduction = $orderCreditsUsed * $costPerOrder;
-                $this->user->balance = max(0, $this->user->balance - $orderDeduction);
-                $this->user->credits = max(0, $this->user->credits - $orderCreditsUsed);
-                $this->user->save();
+            // Save confirmed order
+            if ($extractedOrder) {
+                $orderCreditsUsed = $this->saveOrder($phone, $extractedOrder);
+                if ($orderCreditsUsed > 0) {
+                    $costPerOrder    = 5.00;
+                    $orderDeduction  = $orderCreditsUsed * $costPerOrder;
+                    $this->user->balance = max(0, $this->user->balance - $orderDeduction);
+                    $this->user->credits = max(0, $this->user->credits - $orderCreditsUsed);
+                    $this->user->save();
+                }
             }
-        }
-
-
 
         } catch (\Throwable $e) {
             Log::error("JOB_FATAL_ERROR: " . $e->getMessage(), [
@@ -329,7 +341,101 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
     }
 
-    private function getSystemPrompt(bool $isSilent, array $inventory = [])
+    // ============================================================
+    // NEW HELPER METHODS
+    // ============================================================
+
+    /**
+     * Returns true if this phone has NO chat history within the last 3 days.
+     * Used to trigger a warm first-contact greeting.
+     */
+    private function isNewCustomer(string $phone): bool
+    {
+        return !ChatHistory::where('user_id', $this->user->id)
+            ->where('phone', $phone)
+            ->where('timestamp', '>', now()->subDays(3))
+            ->exists();
+    }
+
+    /**
+     * Free plan: allow max 50 user messages per phone per calendar day.
+     * Premium plan: unlimited.
+     */
+    private function hasExceededDailyLimit(string $phone): bool
+    {
+        if ($this->user->plan_type !== 'free') {
+            return false;
+        }
+
+        $todayCount = ChatHistory::where('user_id', $this->user->id)
+            ->where('phone', $phone)
+            ->where('role', 'user')
+            ->whereDate('timestamp', today())
+            ->count();
+
+        return $todayCount >= 50;
+    }
+
+    /**
+     * Sends a typing indicator to the customer via Node.js Bridge.
+     * Only applies to web_automation connections. Fails silently.
+     */
+    private function sendTypingIndicator(string $phone): void
+    {
+        if ($this->user->connection_type !== 'web_automation') {
+            return;
+        }
+
+        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
+        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+
+        try {
+            Http::withHeaders([
+                'x-api-key'    => $apiKey,
+                'Content-Type' => 'application/json',
+            ])->timeout(3)->post("{$nodeBridgeUrl}/typing", [
+                'user_id' => $this->user->id,
+                'phone'   => $phone,
+            ]);
+        } catch (\Exception $e) {
+            // Best effort — typing indicator failure should never block message processing
+        }
+    }
+
+    /**
+     * Fetches the last 5 confirmed order summaries for this phone from chat history.
+     * Scans assistant messages that contain order confirmation text.
+     */
+    private function getOrderHistory(string $phone): array
+    {
+        $orders = ChatHistory::where('user_id', $this->user->id)
+            ->where('phone', $phone)
+            ->where('role', 'assistant')
+            ->where(function ($q) {
+                $q->where('content', 'like', '%✅ Order%')
+                  ->orWhere('content', 'like', '%Order confirm%')
+                  ->orWhere('content', 'like', '%confirm karannada%')
+                  ->orWhere('content', 'like', '%ඇණවුම%');
+            })
+            ->orderBy('timestamp', 'desc')
+            ->limit(5)
+            ->get(['content', 'timestamp']);
+
+        if ($orders->isEmpty()) {
+            return ['message' => 'No recent orders found for this customer.'];
+        }
+
+        return $orders->map(fn($o) => [
+            'date'    => $o->timestamp ? $o->timestamp->format('Y-m-d H:i') : 'Unknown date',
+            'summary' => $o->content,
+        ])->toArray();
+    }
+
+    // ============================================================
+    // EXISTING METHODS (IMPROVED)
+    // ============================================================
+
+    private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $isNewCustomer = false)
     {
         $invCtx = $this->buildInventoryTable($inventory);
 
@@ -341,8 +447,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                  . "DO NOT send any text reply. Tool calls only.";
         }
 
-        $greeting = $this->user->autoreply_message ?: '';
-        $companyName = $this->user->name ?: 'our company';
+        $greeting      = $this->user->autoreply_message ?: '';
+        $companyName   = $this->user->name ?: 'our company';
         $companyDetails = $this->user->company_details ?: 'We sell various products and provide excellent service.';
 
         $prompt  = "You are a helpful, polite, and professional customer service representative for '{$companyName}'.\n";
@@ -364,14 +470,17 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         $prompt .= "GENERAL QUESTIONS (e.g., what do you sell?, where are you located?, etc.):\n";
         $prompt .= "→ Answer beautifully and shortly based on the Company Background. Act naturally like a human employee. Do not mention stock/inventory if not asked.\n\n";
 
-        $prompt .= "INQUIRY (customer asks 'thiyenvada?', 'price?', 'ganna puluwanda?'):\n";
+        $prompt .= "INQUIRY (customer asks 'thiyenvada?', 'price?', 'ganna puluwanda?', 'how much?'):\n";
+        $prompt .= "→ ALWAYS call search_inventory FIRST. NEVER state a price or stock from memory.\n";
         $prompt .= "→ Answer naturally with price and available stock. ONE short reply. No bill.\n";
         $prompt .= "→ IMPORTANT: Check the requested QUANTITY against 'Stock Qty'. If they ask for 60kg but only 30kg is available, clearly say 'We only have 30kg available' and give the price for 30kg.\n\n";
 
-        $prompt .= "ORDER (customer gives items + quantities, with or without address):\n";
-        $prompt .= "→ Match each item to inventory using your language knowledge.\n";
+        $prompt .= "ORDER (customer gives items + quantities):\n";
+        $prompt .= "→ ALWAYS call search_inventory FIRST to get accurate live price and stock.\n";
+        $prompt .= "→ Match each item to inventory using your multilingual knowledge.\n";
         $prompt .= "→ STOCK CHECK: Never bill for more than the 'Stock Qty'. If they order 60 but stock is 30, only bill for 30 and politely mention the shortage.\n";
         $prompt .= "→ BATCH COMBINING: If there are multiple batches of the SAME item with the SAME PRICE, COMBINE them into a single line in the bill. Do NOT list the same item twice if the price is identical.\n";
+        $prompt .= "→ ADDRESS: If the customer has not provided a delivery address, ask for it BEFORE showing the bill preview.\n";
         $prompt .= "→ Build bill preview. DO NOT call confirm_order yet.\n";
         $prompt .= "→ Bill format:\n\n";
         $prompt .= "🛒 Bill Preview:\n";
@@ -380,21 +489,32 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         $prompt .= "Item 2 6kg × Rs.300 = Rs.1,800\n";
         $prompt .= "──────────────────\n";
         $prompt .= "📦 Total: Rs.2,700\n";
-        $prompt .= "📍 [Address if provided]\n\n";
+        $prompt .= "📍 Address: [Customer address]\n\n";
         $prompt .= "Confirm karannada? 'OK' or 'Yes' 👍\n\n";
 
         $prompt .= "→ Stock Qty = 0: Skip from bill. Add at end warmly: '[Item] dan nathi sir 🙏 Laba una gaman kiyannm'\n";
-        $prompt .= "→ Address missing: ask ONLY 'Address kiyanna sir?'\n\n";
+        $prompt .= "→ Address missing: ask ONLY 'Address kiyanna sir? 📍'\n\n";
 
         $prompt .= "CONFIRMATION (customer says ok / yes / ow / හා / gena enna):\n";
-        $prompt .= "→ NOW call confirm_order tool to save. Reply: '✅ Order confirm! Thanks 🚚'\n\n";
+        $prompt .= "→ Make sure you have BOTH confirmed items AND a delivery address.\n";
+        $prompt .= "→ If address is still missing, ask: 'Address kiyanna sir? 📍' — do NOT call confirm_order yet.\n";
+        $prompt .= "→ Once you have both, call confirm_order tool. Reply: '✅ Order confirm! Thanks 🚚'\n\n";
+
+        $prompt .= "ORDER HISTORY (customer asks 'before order ekak', 'last time', 'previous orders', 'api gatta deyak'):\n";
+        $prompt .= "→ Call get_order_history tool and present the results clearly.\n\n";
 
         $prompt .= "STRICT RULES:\n";
         $prompt .= "- NEVER say: 'balanna puluwn nehe', 'database', 'system', 'inventory', 'I cannot find'\n";
+        $prompt .= "- NEVER give price or stock from memory — always call search_inventory first.\n";
+        $prompt .= "- NEVER call confirm_order without a delivery address — collect it first.\n";
+        $prompt .= "- If you are unsure about a product match, ask the customer to clarify instead of guessing.\n";
         $prompt .= "- Answer naturally like a real human employee of '{$companyName}'.\n";
         $prompt .= "- ONE message only per reply. Keep it short and beautiful.\n";
 
-        if ($greeting) {
+        // Greeting: use the $isNewCustomer flag for a precise first-contact greeting
+        if ($isNewCustomer && $greeting) {
+            $prompt .= "\n🌟 NEW CUSTOMER: This is their very first message. Start your reply with this warm company greeting: \"{$greeting}\"\n";
+        } elseif ($greeting) {
             $prompt .= "\nFor the customer's VERY FIRST message only, start with: \"{$greeting}\"\n";
         }
 
@@ -426,19 +546,17 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     private function saveChatHistory($phone, $role, $content, $toolCallId = null, $toolName = null)
     {
         $chat = ChatHistory::create([
-            'user_id' => $this->user->id,
-            'phone' => $phone,
-            'role' => $role,
-            'content' => $content,
+            'user_id'      => $this->user->id,
+            'phone'        => $phone,
+            'role'         => $role,
+            'content'      => $content,
             'tool_call_id' => $toolCallId,
-            'tool_name' => $toolName,
-            'timestamp' => now()
+            'tool_name'    => $toolName,
+            'timestamp'    => now(),
         ]);
 
-        // Get real phone for Contacts if passed in payload, else fallback to $phone
-        $realPhone = $this->msg['real_phone'] ?? $phone;
-
         // Save to Contacts for Bulk Broadcasting
+        $realPhone = $this->msg['real_phone'] ?? $phone;
         \App\Models\Contact::updateOrCreate(
             ['user_id' => $this->user->id, 'phone' => $realPhone],
             ['last_messaged_at' => now(), 'updated_at' => now()]
@@ -454,8 +572,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
     /**
      * Load the FULL inventory from Google Sheet once at job start.
-     * Returns all rows as array. No alias map needed — AI matches by its own multilingual knowledge.
-     * Returns [] if sheet not configured or not accessible.
+     * Returns all rows as array. Returns [] if sheet not configured.
      */
     private function loadFullInventory(): array
     {
@@ -470,25 +587,32 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 return [];
             }
 
-            $client = $this->getGoogleClient();
+            $client  = $this->getGoogleClient();
             $sheetId = $this->getSheetId($client, $this->user->google_sheet_name);
             if (!$sheetId) {
                 Log::warning("INVENTORY_LOAD: Sheet '{$this->user->google_sheet_name}' not found in Drive");
                 return [];
             }
 
-            $sheets = new GoogleSheets($client);
+            $sheets   = new GoogleSheets($client);
             $response = $sheets->spreadsheets_values->get($sheetId, 'Inventory!A:Z');
-            $values = $response->getValues();
+            $values   = $response->getValues();
 
             if (empty($values) || count($values) < 2) {
                 Log::warning("INVENTORY_LOAD: Inventory tab empty");
                 return [];
             }
 
-            $headers = array_map(fn($h) => strtolower(trim($h)), array_shift($values));
-            $rows = [];
-            foreach ($values as $row) {
+            $headers   = array_map(fn($h) => strtolower(trim($h)), array_shift($values));
+            $totalRows = count($values);
+            $rows      = [];
+
+            // Cap items sent to AI system prompt — prevents massive token usage for large catalogues.
+            // search_inventory tool still searches ALL rows directly from the sheet.
+            $promptLimit = 300;
+            $slice       = $totalRows > $promptLimit ? array_slice($values, 0, $promptLimit) : $values;
+
+            foreach ($slice as $row) {
                 $item = [];
                 foreach ($headers as $i => $key) {
                     $item[$key] = $row[$i] ?? '';
@@ -496,7 +620,14 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 $rows[] = $item;
             }
 
-            Log::info("INVENTORY_LOAD: Loaded " . count($rows) . " items into AI context");
+            if ($totalRows > $promptLimit) {
+                // Sentinel row so the AI knows more items exist and should use the tool
+                $rows[] = array_fill_keys($headers, '');
+                $rows[count($rows) - 1][array_key_first(array_flip($headers))] =
+                    "... ({$totalRows} total items — use search_inventory tool for full results)";
+            }
+
+            Log::info("INVENTORY_LOAD: {$totalRows} total items, " . count($rows) . " sent to AI context");
             return $rows;
 
         } catch (Exception $e) {
@@ -509,52 +640,40 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     {
         if (!$text) return;
 
-        // 🔄 Check connection type and route accordingly
         if ($this->user->connection_type === 'web_automation') {
-            // Option B: Send via Node.js Bridge
             $this->sendViaNodeBridge($phone, $text);
         } else {
-            // Option A: Send via Meta Cloud API (existing method)
             if (!$phoneId || !$token) return;
-            
+
             $authHeader = str_starts_with($token, 'Bearer ') ? $token : "Bearer {$token}";
             Http::withHeaders(['Authorization' => $authHeader])->post("https://graph.facebook.com/v19.0/{$phoneId}/messages", [
-                "messaging_product" => "whatsapp",
-                "to" => $phone,
-                "type" => "text",
-                "text" => ["body" => $text]
+                'messaging_product' => 'whatsapp',
+                'to'                => $phone,
+                'type'              => 'text',
+                'text'              => ['body' => $text],
             ]);
         }
     }
 
-    /**
-     * Send WhatsApp reply via Node.js Bridge (Option B)
-     */
     private function sendViaNodeBridge($phone, $text)
     {
         $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
-        $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
         try {
             $response = Http::withHeaders([
-                'x-api-key' => $apiKey,
+                'x-api-key'    => $apiKey,
                 'Content-Type' => 'application/json',
             ])->post("{$nodeBridgeUrl}/send-message", [
                 'user_id' => $this->user->id,
-                'phone' => $phone,
+                'phone'   => $phone,
                 'message' => $text,
             ]);
 
             if ($response->successful()) {
-                Log::info("✅ Reply sent via Node Bridge", [
-                    'user_id' => $this->user->id,
-                    'phone' => $phone,
-                ]);
+                Log::info("✅ Reply sent via Node Bridge", ['user_id' => $this->user->id, 'phone' => $phone]);
             } else {
-                Log::error("❌ Node Bridge send failed", [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
+                Log::error("❌ Node Bridge send failed", ['status' => $response->status(), 'body' => $response->body()]);
             }
         } catch (\Exception $e) {
             Log::error("❌ Node Bridge connection error: " . $e->getMessage());
@@ -564,7 +683,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     private function saveOrder($phone, $orderData)
     {
         $creditsUsed = 0;
-        
+
         // 1. Save to Custom API if enabled
         if (!empty($this->user->order_api_url)) {
             try {
@@ -572,11 +691,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 if (!empty($this->user->target_api_key)) {
                     $headers['x-api-key'] = $this->user->target_api_key;
                 }
-                $payload = ["phone" => $phone, "order" => $orderData];
                 $response = Http::withHeaders($headers)
                     ->timeout(10)
-                    ->post($this->user->order_api_url, $payload);
-                    
+                    ->post($this->user->order_api_url, ['phone' => $phone, 'order' => $orderData]);
+
                 if ($response->successful()) {
                     Log::info("✅ Order sent to API for {$phone}");
                     $creditsUsed++;
@@ -591,7 +709,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         // 2. Save to Google Sheets if enabled
         if (!empty($this->user->google_sheet_name)) {
             try {
-                $client = $this->getGoogleClient();
+                $client  = $this->getGoogleClient();
                 $sheetId = $this->getSheetId($client, $this->user->google_sheet_name);
 
                 if ($sheetId) {
@@ -599,22 +717,19 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     $values = [];
                     foreach ($orderData['items'] as $item) {
                         $values[] = [
-                            now()->format("Y-m-d H:i:s"),
+                            now()->format('Y-m-d H:i:s'),
                             $phone,
                             $item['name'] ?? '',
                             $item['quantity'] ?? '',
                             $item['price_breakdown'] ?? '',
                             $item['total_price'] ?? '',
                             $orderData['address'] ?? 'N/A',
-                            "Pending"
+                            'Pending',
                         ];
                     }
-                    
-                    $body = new \Google\Service\Sheets\ValueRange([
-                        'values' => $values
-                    ]);
+
+                    $body   = new \Google\Service\Sheets\ValueRange(['values' => $values]);
                     $params = ['valueInputOption' => 'USER_ENTERED'];
-                    
                     $sheets->spreadsheets_values->append($sheetId, 'Orders!A:H', $body, $params);
                     Log::info("✅ Order saved to sheet for {$phone}");
                     $creditsUsed++;
@@ -623,7 +738,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 Log::error("Google Sheets append failed: " . $e->getMessage());
             }
         }
-        
+
         return $creditsUsed;
     }
 
@@ -635,15 +750,19 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 $response = Http::timeout(10)->get($this->user->inventory_api_url);
                 if ($response->successful()) {
                     $items = $response->json();
-                    return collect($items)->filter(function($item) use ($query) {
+                    $terms = $this->buildSearchTerms($query);
+                    return collect($items)->filter(function ($item) use ($terms) {
                         $str = strtolower(json_encode($item));
-                        return str_contains($str, strtolower($query));
+                        foreach ($terms as $term) {
+                            if (str_contains($str, $term)) return true;
+                        }
+                        return false;
                     })->values()->toArray();
                 }
             } catch (Exception $e) {
                 Log::error("Inventory API failed: " . $e->getMessage());
             }
-            return []; // Fallback empty if API explicitly chosen but failed
+            return [];
         }
 
         // 2. Default to Google Sheets
@@ -652,44 +771,32 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return [];
         }
 
-        Log::info("SHEET_SEARCH: Searching for '{$query}' in sheet '{$this->user->google_sheet_name}'");
-
         try {
-            // Check if service_account.json exists
             $serviceAccountPath = storage_path('app/service_account.json');
             if (!file_exists($serviceAccountPath)) {
                 Log::error("SHEET_SEARCH: service_account.json NOT FOUND at: {$serviceAccountPath}");
                 return [];
             }
-            Log::info("SHEET_SEARCH: service_account.json found ✅");
 
-            $client = $this->getGoogleClient();
+            $client  = $this->getGoogleClient();
             $sheetId = $this->getSheetId($client, $this->user->google_sheet_name);
 
             if (!$sheetId) {
-                Log::error("SHEET_SEARCH: Sheet NOT FOUND in Drive — name: '{$this->user->google_sheet_name}'. Check service account sharing.");
+                Log::error("SHEET_SEARCH: Sheet NOT FOUND — '{$this->user->google_sheet_name}'");
                 return [];
             }
-            Log::info("SHEET_SEARCH: Sheet found ✅, ID: {$sheetId}");
 
-            $sheets = new GoogleSheets($client);
+            $sheets   = new GoogleSheets($client);
             $response = $sheets->spreadsheets_values->get($sheetId, 'Inventory!A:Z');
-            $values = $response->getValues();
+            $values   = $response->getValues();
 
             if (empty($values) || count($values) < 2) {
-                Log::warning("SHEET_SEARCH: Inventory tab is empty or has no data rows. Rows found: " . count($values ?? []));
+                Log::warning("SHEET_SEARCH: Inventory tab is empty or has no data rows.");
                 return [];
             }
 
             $headers = array_shift($values);
-            Log::info("SHEET_SEARCH: Inventory loaded ✅", [
-                'total_rows' => count($values),
-                'headers'    => $headers,
-            ]);
-
-            // Build all search terms: original query + known aliases
-            $searchTerms = $this->getSearchAliases($query);
-            Log::info("SHEET_SEARCH: Search terms to try", ['terms' => $searchTerms]);
+            $terms   = $this->buildSearchTerms($query);
 
             $results = [];
             foreach ($values as $row) {
@@ -697,22 +804,16 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 foreach ($headers as $index => $key) {
                     $itemData[strtolower(trim($key))] = $row[$index] ?? '';
                 }
-                $rowStr = strtolower(implode(" ", $row));
-
-                // Match if ANY of the search terms is found in this row
-                $matched = false;
-                foreach ($searchTerms as $term) {
-                    if (str_contains($rowStr, strtolower($term))) {
-                        $matched = true;
+                $rowStr = strtolower(implode(' ', $row));
+                foreach ($terms as $term) {
+                    if (str_contains($rowStr, $term)) {
+                        $results[] = $itemData;
                         break;
                     }
                 }
-                if ($matched) {
-                    $results[] = $itemData;
-                }
             }
 
-            Log::info("SHEET_SEARCH: Query '{$query}' → found " . count($results) . " row(s)");
+            Log::info("SHEET_SEARCH: '{$query}' → " . count($results) . " result(s)");
             return $results;
 
         } catch (Exception $e) {
@@ -725,63 +826,22 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     }
 
     /**
-     * Returns all known aliases for a search query,
-     * covering Sinhala, Singlish, English, and Tamil names
-     * for common Sri Lankan grocery items.
+     * Breaks the AI's query into search terms for substring matching.
+     * Works for any language/business type — no hardcoded aliases needed.
+     * The AI already sees the full inventory table and uses exact item names when calling this tool.
      */
-    private function getSearchAliases(string $query): array
+    private function buildSearchTerms(string $query): array
     {
-        $q = strtolower(trim($query));
+        $query = strtolower(trim($query));
 
-        // Map: each key is a search term → list of all aliases to also try
-        $aliasMap = [
-            // Lentils / Dhal
-            'parippu'   => ['dhal', 'dal', 'lentil', 'parippu'],
-            'dhal'      => ['dhal', 'dal', 'parippu', 'lentil'],
-            'dal'       => ['dhal', 'dal', 'parippu', 'lentil'],
-            // Sugar
-            'sini'      => ['sugar', 'sini'],
-            'sugar'     => ['sugar', 'sini'],
-            // Onion
-            'luunu'     => ['onion', 'luunu', 'lunu'],
-            'lunu'      => ['onion', 'luunu', 'lunu'],
-            'onion'     => ['onion', 'luunu', 'lunu'],
-            // Potato
-            'ala'       => ['potato', 'potatoes', 'ala'],
-            'potato'    => ['potato', 'potatoes', 'ala'],
-            'potatoes'  => ['potato', 'potatoes', 'ala'],
-            // Rice
-            'hal'       => ['rice', 'hal'],
-            'rice'      => ['rice', 'hal'],
-            // Flour / Bread flour
-            'paan piti' => ['paan piti', 'bread flour', 'flour'],
-            'flour'     => ['flour', 'paan piti', 'bread flour'],
-            // Chickpea / Kadala
-            'kadala'    => ['kadala', 'chickpea', 'gram'],
-            'chickpea'  => ['chickpea', 'kadala'],
-            // Salt
-            'lunu'      => ['salt', 'lunu'],
-            'salt'      => ['salt', 'lunu'],
-            // Coconut oil
-            'pol tel'   => ['coconut oil', 'pol tel'],
-            'coconut oil' => ['coconut oil', 'pol tel'],
-            // Eggs
-            'biththara' => ['egg', 'eggs', 'biththara'],
-            'egg'       => ['egg', 'eggs', 'biththara'],
-            'eggs'      => ['egg', 'eggs', 'biththara'],
-            // Garlic
-            'sudulunu'  => ['garlic', 'sudulunu'],
-            'garlic'    => ['garlic', 'sudulunu'],
-            // Turmeric
-            'kaha'      => ['turmeric', 'kaha'],
-            'turmeric'  => ['turmeric', 'kaha'],
-            // Chili powder
-            'miris'     => ['chili', 'chilli', 'miris', 'red chili'],
-            'chili'     => ['chili', 'chilli', 'miris'],
-        ];
+        // Split on spaces and common separators to try each word individually
+        $words = array_filter(
+            preg_split('/[\s,\/\-]+/', $query),
+            fn($w) => strlen($w) >= 2
+        );
 
-        // If we have aliases for this query, return them; otherwise just return the original
-        return $aliasMap[$q] ?? [$q];
+        // Full phrase first, then individual words — deduped
+        return array_values(array_unique(array_merge([$query], $words)));
     }
 
     private function getGoogleClient()
@@ -797,18 +857,18 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     private function getSheetId($client, $name)
     {
         $drive = new GoogleDrive($client);
-        $q = "name='" . str_replace("'", "\'", $name) . "' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
-        
+        $q     = "name='" . str_replace("'", "\'", $name) . "' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
+
         $files = $drive->files->listFiles([
-            'q' => $q,
+            'q'      => $q,
             'spaces' => 'drive',
-            'fields' => 'files(id, name)'
+            'fields' => 'files(id, name)',
         ]);
 
         if (count($files->getFiles()) > 0) {
             return $files->getFiles()[0]->getId();
         }
-        
+
         Log::warning("No Google Sheet found for name: {$name}. Check permissions to the service account bot.");
         return null;
     }
