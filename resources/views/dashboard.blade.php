@@ -215,7 +215,7 @@
                                         <p class="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2">Google Sheets Access Required</p>
                                         <p class="text-sm text-slate-400">Share your target Google Sheet with 'Editor' permissions to our Service Automator:</p>
                                         <div class="mt-3 flex items-center space-x-2">
-                                            <code class="bg-slate-950 px-3 py-2 rounded-lg text-emerald-400 text-xs font-mono select-all">sheet-bot@my-ai-bridge-491318.iam.gserviceaccount.com</code>
+                                            <code class="bg-slate-950 px-3 py-2 rounded-lg text-emerald-400 text-xs font-mono select-all">wh-brige@my-ai-bridge-491318.iam.gserviceaccount.com</code>
                                         </div>
                                     </div>
                                 </div>
