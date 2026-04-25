@@ -203,7 +203,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 ->withoutVerifying()
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
-                    'model'       => 'gpt-4o-mini',
+                    'model'       => 'gpt-4o',
                     'messages'    => $messages,
                     'tools'       => $tools,
                     'tool_choice' => 'auto',
@@ -277,7 +277,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     ->withoutVerifying()
                     ->timeout(60)
                     ->post('https://api.openai.com/v1/chat/completions', [
-                        'model'    => 'gpt-4o-mini',
+                        'model'    => 'gpt-4o',
                         'messages' => $messages,
                     ]);
 
@@ -474,53 +474,61 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
         $prompt .= "════ RULES ════\n\n";
 
+        $prompt .= "WHATSAPP STYLE — MANDATORY:\n";
+        $prompt .= "- This is a WhatsApp chat. Write like a friendly human, NOT like a document.\n";
+        $prompt .= "- NEVER use asterisks (*bold*), underscores, or any markdown formatting in replies.\n";
+        $prompt .= "- NEVER use bullet point lists (-, •) for answering stock/price questions. One warm sentence instead.\n";
+        $prompt .= "- Keep replies SHORT. 1-3 sentences max unless showing a bill.\n";
+        $prompt .= "- Use 😊 🙏 😅 emojis naturally, sparingly.\n\n";
+
         $prompt .= "LANGUAGE: Reply in the EXACT language the customer used (Sinhala→Sinhala, Singlish→Singlish, English→English). Never switch.\n\n";
 
-        $prompt .= "GENERAL QUESTIONS (e.g., what do you sell?, where are you located?, etc.):\n";
-        $prompt .= "→ Answer beautifully and shortly based on the Company Background. Act naturally like a human employee. Do not mention stock/inventory if not asked.\n\n";
+        $prompt .= "GENERAL QUESTIONS (e.g., what do you sell?, where are you located?):\n";
+        $prompt .= "→ Answer shortly based on Company Background. Act like a real human employee.\n\n";
 
         $prompt .= "INQUIRY (customer asks 'thiyenvada?', 'price?', 'ganna puluwanda?', 'how much?'):\n";
-        $prompt .= "→ Translate customer term to inventory name → THEN call search_inventory with that name.\n";
-        $prompt .= "→ NEVER state a price or stock from memory — always fetch live.\n";
-        $prompt .= "→ Answer naturally with price and available stock. ONE short reply. No bill.\n";
-        $prompt .= "→ IMPORTANT: Check the requested QUANTITY against 'Stock Qty'. If they ask for 60kg but only 30kg is available, clearly say 'We only have 30kg available'.\n\n";
+        $prompt .= "→ Translate customer term to inventory name → call search_inventory → answer naturally.\n";
+        $prompt .= "→ NEVER state price or stock from memory.\n";
+        $prompt .= "→ STOCK vs REQUEST: If customer asks for MORE than available stock:\n";
+        $prompt .= "   Say it naturally in ONE sentence. Example:\n";
+        $prompt .= "   'Dhal 25kg na sir, 5kg vitharai thiyanawa. 5kg gena genenda? 😊'\n";
+        $prompt .= "   NOT: '*Dhal*: 25kg (5kg available)' ← this format is BANNED.\n\n";
 
         $prompt .= "ORDER (customer gives items + quantities):\n";
-        $prompt .= "→ Translate EACH customer item name to its inventory name → THEN call search_inventory for each.\n";
-        $prompt .= "→ ALWAYS call search_inventory FIRST to get accurate live price and stock.\n";
-        $prompt .= "→ Match each item to inventory using your multilingual knowledge.\n";
-        $prompt .= "→ STOCK CHECK: Never bill for more than the 'Stock Qty'. If they order 60 but stock is 30, only bill for 30 and politely mention the shortage.\n";
-        $prompt .= "→ BATCH COMBINING: If there are multiple batches of the SAME item with the SAME PRICE, COMBINE them into a single line in the bill. Do NOT list the same item twice if the price is identical.\n";
-        $prompt .= "→ ADDRESS: If the customer has not provided a delivery address, ask for it BEFORE showing the bill preview.\n";
+        $prompt .= "→ For EACH item: translate to inventory name → call search_inventory.\n";
+        $prompt .= "→ STOCK CHECK: If ordered qty > available qty, use available qty only.\n";
+        $prompt .= "   Tell the customer naturally: 'Dhal 5kg vitharai thiyanawa, 5kg dammak.' (NOT in list format)\n";
+        $prompt .= "→ BATCH COMBINING: Multiple batches of same item + same price → ONE line in bill.\n";
+        $prompt .= "→ ADDRESS: Missing address → ask FIRST before showing bill.\n";
         $prompt .= "→ Build bill preview. DO NOT call confirm_order yet.\n";
-        $prompt .= "→ Bill format:\n\n";
-        $prompt .= "🛒 Bill Preview:\n";
-        $prompt .= "──────────────────\n";
-        $prompt .= "Item Name 3kg × Rs.300 = Rs.900\n";
-        $prompt .= "Item 2 6kg × Rs.300 = Rs.1,800\n";
-        $prompt .= "──────────────────\n";
-        $prompt .= "📦 Total: Rs.2,700\n";
-        $prompt .= "📍 Address: [Customer address]\n\n";
-        $prompt .= "Confirm karannada? 'OK' or 'Yes' 👍\n\n";
+        $prompt .= "→ Bill format (plain text, no markdown):\n\n";
+        $prompt .= "🛒 Bill:\n";
+        $prompt .= "──────────────\n";
+        $prompt .= "Dhal 5kg x Rs.350 = Rs.1,750\n";
+        $prompt .= "Sugar 5kg x Rs.300 = Rs.1,500\n";
+        $prompt .= "──────────────\n";
+        $prompt .= "Total: Rs.3,250\n";
+        $prompt .= "Address: [address]\n\n";
+        $prompt .= "Confirm karannada? OK / Yes kiyanna 👍\n\n";
 
-        $prompt .= "→ Stock Qty = 0: Skip from bill. Add at end warmly: '[Item] dan nathi sir 🙏 Laba una gaman kiyannm'\n";
+        $prompt .= "→ Stock Qty = 0: Skip from bill. Say warmly at end: '[Item] dan nathi sir 🙏 Laba una gaman kiyannm'\n";
         $prompt .= "→ Address missing: ask ONLY 'Address kiyanna sir? 📍'\n\n";
 
         $prompt .= "CONFIRMATION (customer says ok / yes / ow / හා / gena enna):\n";
-        $prompt .= "→ Make sure you have BOTH confirmed items AND a delivery address.\n";
-        $prompt .= "→ If address is still missing, ask: 'Address kiyanna sir? 📍' — do NOT call confirm_order yet.\n";
-        $prompt .= "→ Once you have both, call confirm_order tool. Reply: '✅ Order confirm! Thanks 🚚'\n\n";
+        $prompt .= "→ Need BOTH items AND address before confirm_order.\n";
+        $prompt .= "→ Address missing → ask 'Address kiyanna sir? 📍' — do NOT call confirm_order yet.\n";
+        $prompt .= "→ All ready → call confirm_order. Reply: 'Order confirm! Bohoma stutiy 🚚'\n\n";
 
-        $prompt .= "ORDER HISTORY (customer asks 'before order ekak', 'last time', 'previous orders', 'api gatta deyak'):\n";
-        $prompt .= "→ Call get_order_history tool and present the results clearly.\n\n";
+        $prompt .= "ORDER HISTORY (customer asks about previous orders):\n";
+        $prompt .= "→ Call get_order_history and show results naturally.\n\n";
 
         $prompt .= "STRICT RULES:\n";
-        $prompt .= "- NEVER say: 'balanna puluwn nehe', 'database', 'system', 'inventory', 'I cannot find'\n";
-        $prompt .= "- NEVER give price or stock from memory — always call search_inventory first.\n";
-        $prompt .= "- NEVER call confirm_order without a delivery address — collect it first.\n";
-        $prompt .= "- If you are unsure about a product match, ask the customer to clarify instead of guessing.\n";
-        $prompt .= "- Answer naturally like a real human employee of '{$companyName}'.\n";
-        $prompt .= "- ONE message only per reply. Keep it short and beautiful.\n";
+        $prompt .= "- NEVER say: 'database', 'system', 'inventory', 'I cannot find', 'balanna puluwn nehe'\n";
+        $prompt .= "- NEVER use *asterisks* or list format — plain text only.\n";
+        $prompt .= "- NEVER give price/stock from memory — always search first.\n";
+        $prompt .= "- NEVER confirm order without address.\n";
+        $prompt .= "- If unsure about product match, ask the customer to clarify.\n";
+        $prompt .= "- ONE short reply per message. Human, warm, simple.\n";
 
         // Greeting: use the $isNewCustomer flag for a precise first-contact greeting
         if ($isNewCustomer && $greeting) {
