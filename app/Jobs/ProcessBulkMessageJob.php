@@ -15,75 +15,98 @@ class ProcessBulkMessageJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $timeout = 0; // Disable timeout as this could take a long time
+    public $timeout = 0;
 
     protected $user;
     protected $contacts;
     protected $message;
+    protected $imageUrl;
 
-    /**
-     * Create a new job instance.
-     */
-    public function __construct(User $user, array $contacts, string $message)
+    public function __construct(User $user, array $contacts, string $message, ?string $imageUrl = null)
     {
-        $this->user = $user;
+        $this->user     = $user;
         $this->contacts = $contacts;
-        $this->message = $message;
+        $this->message  = $message;
+        $this->imageUrl = $imageUrl;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
-        Log::info("Starting Bulk Broadcast for User ID: {$this->user->id}");
+        Log::info("Starting Bulk Broadcast for User ID: {$this->user->id}", [
+            'total'     => count($this->contacts),
+            'has_image' => !empty($this->imageUrl),
+        ]);
 
         foreach ($this->contacts as $phone) {
             try {
                 if ($this->user->connection_type === 'web_automation') {
-                    $this->sendViaNodeBridge($phone, $this->message);
+                    $this->sendViaNodeBridge($phone, $this->message, $this->imageUrl);
                 } else {
-                    $this->sendViaCloudApi($phone, $this->message);
+                    $this->sendViaCloudApi($phone, $this->message, $this->imageUrl);
                 }
-                
-                // Add a small delay to avoid rate limiting
-                sleep(2);
+
+                sleep(2); // Avoid WhatsApp rate limiting
             } catch (\Exception $e) {
-                Log::error("Failed to send bulk message to {$phone}: " . $e->getMessage());
+                Log::error("Bulk message failed for {$phone}: " . $e->getMessage());
             }
         }
 
         Log::info("Finished Bulk Broadcast for User ID: {$this->user->id}");
     }
 
-    private function sendViaNodeBridge($phone, $text)
+    private function sendViaNodeBridge(string $phone, string $text, ?string $imageUrl = null): void
     {
         $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
-        $apiKey = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
 
-        Http::withHeaders([
-            'x-api-key' => $apiKey,
-            'Content-Type' => 'application/json',
-        ])->post("{$nodeBridgeUrl}/send-message", [
+        $payload = [
             'user_id' => $this->user->id,
-            'phone' => $phone,
+            'phone'   => $phone,
             'message' => $text,
-        ]);
+        ];
+
+        if ($imageUrl) {
+            $payload['image_url'] = $imageUrl;
+        }
+
+        $response = Http::withHeaders([
+            'x-api-key'    => $apiKey,
+            'Content-Type' => 'application/json',
+        ])->timeout(30)->post("{$nodeBridgeUrl}/send-message", $payload);
+
+        if (!$response->successful()) {
+            Log::error("Node Bridge bulk send failed for {$phone}", ['body' => $response->body()]);
+        }
     }
 
-    private function sendViaCloudApi($phone, $text)
+    private function sendViaCloudApi(string $phone, string $text, ?string $imageUrl = null): void
     {
         $phoneId = $this->user->whatsapp_phone_number_id;
-        $token = $this->user->target_api_key;
-        
+        $token   = $this->user->target_api_key;
+
         if (!$phoneId || !$token) return;
-        
+
         $authHeader = str_starts_with($token, 'Bearer ') ? $token : "Bearer {$token}";
-        Http::withHeaders(['Authorization' => $authHeader])->post("https://graph.facebook.com/v19.0/{$phoneId}/messages", [
-            "messaging_product" => "whatsapp",
-            "to" => $phone,
-            "type" => "text",
-            "text" => ["body" => $text]
-        ]);
+
+        if ($imageUrl) {
+            Http::withHeaders(['Authorization' => $authHeader])
+                ->post("https://graph.facebook.com/v19.0/{$phoneId}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $phone,
+                    'type'              => 'image',
+                    'image'             => [
+                        'link'    => $imageUrl,
+                        'caption' => $text,
+                    ],
+                ]);
+        } else {
+            Http::withHeaders(['Authorization' => $authHeader])
+                ->post("https://graph.facebook.com/v19.0/{$phoneId}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'to'                => $phone,
+                    'type'              => 'text',
+                    'text'              => ['body' => $text],
+                ]);
+        }
     }
 }

@@ -194,6 +194,9 @@ async function getOrCreateClient(userId) {
 
     // Message Received
     client.on('message', async (message) => {
+        // Skip WhatsApp status broadcasts (status updates / stories)
+        if (message.from === 'status@broadcast') return;
+
         console.log(`[${userId}] 📩 Message from ${message.from}: ${message.body.substring(0, 50)}`);
 
         // Ignore own messages and status broadcasts
@@ -255,7 +258,8 @@ async function getOrCreateClient(userId) {
 
     // Handle messages sent by the owner from their phone
     client.on('message_create', async (message) => {
-        if (!message.fromMe) return; // Only process outgoing messages here
+        if (!message.fromMe) return;
+        if (message.to === 'status@broadcast') return; // Skip status posts
         
         console.log(`[${userId}] 📤 Outgoing message to ${message.to}: ${message.body.substring(0, 50)}`);
 
@@ -436,10 +440,10 @@ app.post('/disconnect', async (req, res) => {
  * Body: { user_id: number, phone: string, message: string }
  */
 app.post('/send-message', async (req, res) => {
-    const { user_id, phone, message } = req.body;
+    const { user_id, phone, message, image_url } = req.body;
 
-    if (!user_id || !phone || !message) {
-        return res.status(400).json({ error: 'user_id, phone, and message are required' });
+    if (!user_id || !phone || (!message && !image_url)) {
+        return res.status(400).json({ error: 'user_id, phone, and message or image_url are required' });
     }
 
     const key = String(user_id);
@@ -464,7 +468,12 @@ app.post('/send-message', async (req, res) => {
         let formattedPhone = actualPhone.replace('@lid', '');
         const chatId = formattedPhone.includes('@') ? formattedPhone : `${formattedPhone}@c.us`;
 
-        await clientData.client.sendMessage(chatId, message);
+        if (image_url) {
+            const media = await MessageMedia.fromUrl(image_url, { unsafeMime: true });
+            await clientData.client.sendMessage(chatId, media, { caption: message || '' });
+        } else {
+            await clientData.client.sendMessage(chatId, message);
+        }
         console.log(`[${user_id}] ✅ Message sent to ${phone}`);
 
         res.json({ status: 'sent', to: phone });

@@ -41,6 +41,11 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
+        // Ignore WhatsApp status broadcasts — never reply to status updates
+        if ($phone === 'status@broadcast' || str_contains($phone, 'status@broadcast')) {
+            return;
+        }
+
         // Enforce Free Plan Limits (Max 3 Contacts)
         $realPhone = $this->msg['real_phone'] ?? $phone;
         if ($this->user->plan_type === 'free') {
@@ -532,6 +537,9 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         $prompt .= "- NEVER mix different-price batches silently — always ask customer first\n";
         $prompt .= "- If product not matched in table, ask customer to clarify\n";
         $prompt .= "- ONE short reply per message. Human, warm, simple.\n";
+        $prompt .= "- OFF-TOPIC: If the customer's message is completely unrelated to our products or business\n";
+        $prompt .= "  (random emoji only, forwarded content, irrelevant personal chat, spam) — return EMPTY response. Do NOT reply.\n";
+        $prompt .= "  Only engage with messages that relate to our products, orders, delivery, or the company.\n";
 
         // Greeting: use the $isNewCustomer flag for a precise first-contact greeting
         if ($isNewCustomer && $greeting) {

@@ -79,7 +79,7 @@
             </div>
         @endif
 
-        <form action="{{ route('bulk-message.send') }}" method="POST" id="broadcastForm">
+        <form action="{{ route('bulk-message.send') }}" method="POST" enctype="multipart/form-data" id="broadcastForm">
             @csrf
             
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
@@ -170,10 +170,36 @@
                             </div>
                         </div>
 
+                        <!-- Image Upload -->
+                        <div class="mb-5">
+                            <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                                Attach Image <span class="text-slate-600 font-normal normal-case">(optional — JPG, PNG, GIF, max 5MB)</span>
+                            </label>
+                            <div id="imageDropZone"
+                                class="border-2 border-dashed border-slate-700 rounded-2xl p-5 text-center cursor-pointer hover:border-purple-500/50 transition-all relative"
+                                onclick="document.getElementById('imageFileInput').click()">
+                                <input type="file" name="image" id="imageFileInput" accept="image/*" class="hidden" onchange="previewImage(event)">
+                                <div id="imagePlaceholder" class="text-slate-500">
+                                    <svg class="w-8 h-8 mx-auto mb-2 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                    <p class="text-xs">Click to upload image</p>
+                                </div>
+                                <div id="imagePreviewWrap" class="hidden">
+                                    <img id="imagePreview" class="max-h-32 mx-auto rounded-xl object-contain" src="" alt="Preview">
+                                    <button type="button" onclick="removeImage(event)"
+                                        class="mt-2 text-xs text-red-400 hover:text-red-300 font-bold transition-colors">
+                                        ✕ Remove image
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Message Text -->
                         <div class="relative">
-                            <textarea name="message" id="messageInput" rows="8" required
+                            <textarea name="message" id="messageInput" rows="6"
                                 class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl p-5 text-white focus:ring-2 focus:ring-purple-500/50 outline-none transition-all placeholder-slate-600 resize-none"
-                                placeholder="Type your promotional message, announcement, or greeting here..."></textarea>
+                                placeholder="Type your message here... (required if no image)"></textarea>
                             <div class="absolute bottom-4 right-4 text-xs font-bold text-slate-500 bg-slate-900 px-3 py-1 rounded-lg border border-slate-800">
                                 <span id="charCount">0</span> chars
                             </div>
@@ -317,6 +343,26 @@
             document.getElementById('contactsList').insertAdjacentHTML('afterbegin', html);
             input.value = '';
             updateCalculations();
+        }
+
+        function previewImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('imagePreview').src = e.target.result;
+                document.getElementById('imagePlaceholder').classList.add('hidden');
+                document.getElementById('imagePreviewWrap').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeImage(event) {
+            event.stopPropagation();
+            document.getElementById('imageFileInput').value = '';
+            document.getElementById('imagePreview').src = '';
+            document.getElementById('imagePlaceholder').classList.remove('hidden');
+            document.getElementById('imagePreviewWrap').classList.add('hidden');
         }
 
         // Character counter

@@ -69,6 +69,11 @@ class WebhookController extends Controller
             return response()->json(['error' => 'Missing required fields'], 400);
         }
 
+        // Ignore WhatsApp status broadcasts (stories/status updates)
+        if ($from === 'status@broadcast' || str_contains($from, 'status@broadcast')) {
+            return response()->json(['status' => 'ignored_broadcast'], 200);
+        }
+
         // If the message was sent by the owner from their phone, just save it to chat history and stop.
         if (!empty($payload['from_me']) && $payload['from_me'] == true) {
             $user = User::find($userId);
