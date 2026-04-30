@@ -46,8 +46,15 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
+        // Normalize phone to clean international format for contact lookups
+        $rawPhone  = $this->msg['real_phone'] ?? $phone;
+        $realPhone = preg_replace('/@.*$/', '', $rawPhone);
+        $realPhone = preg_replace('/[^0-9]/', '', $realPhone);
+        if (strlen($realPhone) === 10 && str_starts_with($realPhone, '0')) {
+            $realPhone = '94' . substr($realPhone, 1);
+        }
+
         // Enforce Free Plan Limits (Max 3 Contacts)
-        $realPhone = $this->msg['real_phone'] ?? $phone;
         if ($this->user->plan_type === 'free') {
             $contactCount = \App\Models\Contact::where('user_id', $this->user->id)->count();
             $contactExists = \App\Models\Contact::where('user_id', $this->user->id)->where('phone', $realPhone)->exists();
@@ -585,12 +592,19 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             'timestamp'    => now(),
         ]);
 
-        // Save to Contacts for Bulk Broadcasting
-        $realPhone = $this->msg['real_phone'] ?? $phone;
-        \App\Models\Contact::updateOrCreate(
-            ['user_id' => $this->user->id, 'phone' => $realPhone],
-            ['last_messaged_at' => now(), 'updated_at' => now()]
-        );
+        // Save to Contacts for Bulk Broadcasting (normalize to clean international format)
+        $rawPhone  = $this->msg['real_phone'] ?? $phone;
+        $realPhone = preg_replace('/@.*$/', '', $rawPhone);       // strip @c.us / @g.us
+        $realPhone = preg_replace('/[^0-9]/', '', $realPhone);    // digits only
+        if (strlen($realPhone) === 10 && str_starts_with($realPhone, '0')) {
+            $realPhone = '94' . substr($realPhone, 1);            // 07X → 94X
+        }
+        if (strlen($realPhone) >= 10 && strlen($realPhone) <= 15) {
+            \App\Models\Contact::updateOrCreate(
+                ['user_id' => $this->user->id, 'phone' => $realPhone],
+                ['last_messaged_at' => now(), 'updated_at' => now()]
+            );
+        }
 
         // Auto-clear chat history older than 3 days
         ChatHistory::where('user_id', $this->user->id)
