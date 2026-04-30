@@ -12,7 +12,10 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // $schedule->command('inspire')->hourly();
+        // Delete admin inbox messages older than 7 days — runs daily at midnight
+        $schedule->call(function () {
+            \App\Models\AdminMessage::where('expires_at', '<', now())->delete();
+        })->daily();
     }
 
     /**

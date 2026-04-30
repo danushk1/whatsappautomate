@@ -69,6 +69,49 @@
             </div>
         @endif
 
+        <!-- Admin Settings -->
+        <div class="glass-card rounded-[2rem] p-4 sm:p-8 mb-8 border-blue-500/10">
+            <h3 class="text-lg font-bold text-white mb-5 flex items-center gap-2">
+                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                Admin Settings
+            </h3>
+            <form action="{{ route('admin.settings.save') }}" method="POST">
+                @csrf
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Admin WhatsApp Number</label>
+                        <input type="text" name="admin_whatsapp" value="{{ $setting->admin_whatsapp }}" placeholder="94771234567"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Bank Name</label>
+                        <input type="text" name="bank_name" value="{{ $setting->bank_name }}" placeholder="Sampath Bank"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Account Number</label>
+                        <input type="text" name="bank_account_no" value="{{ $setting->bank_account_no }}" placeholder="1234567890"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Account Name</label>
+                        <input type="text" name="bank_account_name" value="{{ $setting->bank_account_name }}" placeholder="ABC Pvt Ltd"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Branch</label>
+                        <input type="text" name="bank_branch" value="{{ $setting->bank_branch }}" placeholder="Colombo 03"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition text-sm">
+                    </div>
+                    <div class="flex items-end">
+                        <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl transition shadow-lg shadow-blue-600/20 text-sm">
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+
         <!-- Management Table -->
         <div class="glass-card rounded-[2.5rem] shadow-2xl overflow-hidden">
             <div class="p-4 sm:p-8 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -86,7 +129,7 @@
                     <tr class="bg-slate-900/50 border-b border-slate-800">
                         <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Organization / Client</th>
                         <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
-                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">WhatsApp ID</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Company WA / Private</th>
                         <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Balance (LKR)</th>
                         <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                     </tr>
@@ -114,7 +157,12 @@
                             @endif
                         </td>
                         <td class="px-4 sm:px-8 py-3 sm:py-6">
-                            <span class="text-xs font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-slate-800">{{ $u->whatsapp_phone_number_id ?: 'UNASSIGNED' }}</span>
+                            <div class="flex flex-col gap-1">
+                                <span class="text-xs font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-slate-800">{{ $u->whatsapp_phone_number_id ?: 'UNASSIGNED' }}</span>
+                                @if($u->private_phone)
+                                    <span class="text-xs font-mono text-emerald-400 bg-emerald-500/5 px-2 py-1 rounded border border-emerald-500/20">📱 {{ $u->private_phone }}</span>
+                                @endif
+                            </div>
                         </td>
                         <td class="px-4 sm:px-8 py-3 sm:py-6">
                             <span class="text-emerald-400 font-black text-lg">Rs. {{ number_format($u->balance, 2) }}</span>
@@ -136,6 +184,51 @@
             </table>
             </div>
         </div>
+
+        <!-- Admin Inbox -->
+        @if($messages->count())
+        <div class="mt-8 glass-card rounded-[2rem] overflow-hidden shadow-2xl">
+            <div class="p-4 sm:p-8 border-b border-slate-800 flex items-center justify-between">
+                <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
+                    Admin Inbox
+                    @php $unread = $messages->where('is_read', false)->count(); @endphp
+                    @if($unread)
+                        <span class="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full">{{ $unread }}</span>
+                    @endif
+                </h3>
+                <span class="text-xs text-slate-500">Auto-delete after 7 days</span>
+            </div>
+            <div class="divide-y divide-slate-800/50">
+                @foreach($messages as $msg)
+                <div class="p-4 sm:p-6 flex items-start gap-4 transition-all {{ $msg->is_read ? 'opacity-60' : 'bg-amber-500/5' }}" id="msg-{{ $msg->id }}">
+                    <div class="w-10 h-10 rounded-full {{ $msg->is_read ? 'bg-slate-800' : 'bg-amber-500/20' }} flex items-center justify-center shrink-0">
+                        <svg class="w-5 h-5 {{ $msg->is_read ? 'text-slate-500' : 'text-amber-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex flex-wrap items-center gap-2 mb-1">
+                            <span class="text-sm font-bold text-white">{{ $msg->from_number }}</span>
+                            @if($msg->user)
+                                <span class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">{{ $msg->user->name }}</span>
+                            @else
+                                <span class="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full">Unknown</span>
+                            @endif
+                            @if(!$msg->is_read)
+                                <span class="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase">New</span>
+                            @endif
+                        </div>
+                        <p class="text-sm text-slate-300 whitespace-pre-wrap break-words">{{ $msg->message }}</p>
+                        <p class="text-[10px] text-slate-600 mt-1">{{ $msg->received_at->diffForHumans() }} · expires {{ $msg->expires_at->diffForHumans() }}</p>
+                    </div>
+                    @if(!$msg->is_read)
+                    <button onclick="markRead({{ $msg->id }})" class="text-xs text-slate-500 hover:text-white transition shrink-0 mt-1">✓ Mark read</button>
+                    @endif
+                </div>
+                @endforeach
+            </div>
+        </div>
+        @endif
+
     </div>
 
     <!-- Add New Client Modal -->
@@ -204,6 +297,10 @@
                 <div class="mb-4 mt-4">
                     <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Inventory API URL</label>
                     <input type="text" name="inventory_api_url" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition" placeholder="Optional">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Owner Private WhatsApp (for low balance alerts)</label>
+                    <input type="text" name="private_phone" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-blue-500 outline-none transition" placeholder="94771234567">
                 </div>
                 <div class="flex space-x-4 pt-6">
                     <button type="button" onclick="closeAddModal()" class="flex-1 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-bold transition">Cancel</button>
@@ -280,6 +377,11 @@
                     <input type="text" name="inventory_api_url" id="editInventoryApi" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition" placeholder="Optional">
                 </div>
 
+                <div class="mb-4">
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Owner Private WhatsApp (for low balance alerts)</label>
+                    <input type="text" name="private_phone" id="editPrivatePhone" placeholder="94771234567" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-emerald-500 outline-none transition">
+                </div>
+
                 <!-- AI Settings -->
                 <div class="border-t border-slate-800 pt-4 mt-4">
                     <label class="flex items-center space-x-3 cursor-pointer mb-4">
@@ -320,9 +422,20 @@
             document.getElementById('editIsAutoReply').checked = user.is_autoreply_enabled;
             document.getElementById('editBulkCost').value = user.bulk_message_cost || '0.30';
             document.getElementById('editPlanType').value = user.plan_type || 'free';
+            document.getElementById('editPrivatePhone').value = user.private_phone || '';
             document.getElementById('editModal').classList.remove('hidden');
         }
         function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }
+
+        function markRead(id) {
+            fetch(`/admin/messages/${id}/read`, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' }
+            }).then(() => {
+                const el = document.getElementById('msg-' + id);
+                if (el) { el.classList.add('opacity-60'); el.classList.remove('bg-amber-500/5'); }
+            });
+        }
 
         function searchUsers() {
             let input = document.getElementById('userSearch');

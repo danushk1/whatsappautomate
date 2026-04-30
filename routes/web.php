@@ -51,4 +51,6 @@ Route::middleware(['auth', 'admin', 'single.session'])->prefix('admin')->name('a
     Route::post('/users', [AdminController::class, 'storeUser'])->name('users.store');
     Route::post('/users/{id}/update', [AdminController::class, 'updateUser'])->name('users.update');
     Route::post('/users/{id}/delete', [AdminController::class, 'deleteUser'])->name('users.delete');
+    Route::post('/settings', [AdminController::class, 'saveSettings'])->name('settings.save');
+    Route::post('/messages/{id}/read', [AdminController::class, 'markMessageRead'])->name('messages.read');
 });

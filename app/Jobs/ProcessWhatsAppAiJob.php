@@ -342,6 +342,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     $tokenDeduction  = $totalTokens * $costPerToken;
                     $this->user->balance = max(0, $this->user->balance - $tokenDeduction);
                     $this->user->save();
+                    $this->checkAndNotifyLowBalance();
                 }
             }
 
@@ -354,6 +355,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     $this->user->balance = max(0, $this->user->balance - $orderDeduction);
                     $this->user->credits = max(0, $this->user->credits - $orderCreditsUsed);
                     $this->user->save();
+                    $this->checkAndNotifyLowBalance();
                 }
             }
 
@@ -866,5 +868,41 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
         Log::warning("No Google Sheet found for name: {$name}. Check permissions to the service account bot.");
         return null;
+    }
+
+    private function checkAndNotifyLowBalance(): void
+    {
+        $user = $this->user->fresh();
+
+        if ($user->balance > 10 || $user->balance <= 0) return;
+        if (!$user->private_phone) return;
+
+        // Only notify once per 24 hours
+        if ($user->low_balance_notified_at && $user->low_balance_notified_at->gt(now()->subHours(24))) return;
+
+        $setting = \App\Models\AdminSetting::first();
+        $bankLine = $setting
+            ? "Bank: {$setting->bank_name}\nAcc No: {$setting->bank_account_no}\nName: {$setting->bank_account_name}\nBranch: {$setting->bank_branch}"
+            : 'Please contact admin to top up.';
+
+        $message = "⚠️ ඔබේ balance Rs." . number_format($user->balance, 2) . " ක් ඉතිරියි.\n\nTop up karanna:\n{$bankLine}";
+
+        try {
+            Http::withHeaders([
+                'x-api-key'    => config('services.node_bridge.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                'user_id' => $user->id,
+                'phone'   => $user->private_phone,
+                'message' => $message,
+            ]);
+
+            $user->low_balance_notified_at = now();
+            $user->save();
+
+            Log::info("Low balance notification sent to user {$user->id}");
+        } catch (\Throwable $e) {
+            Log::error("Low balance notification failed: " . $e->getMessage());
+        }
     }
 }

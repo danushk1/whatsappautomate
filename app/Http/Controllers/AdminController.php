@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdminMessage;
+use App\Models\AdminSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
 
@@ -12,8 +14,12 @@ class AdminController extends Controller
      */
     public function index()
     {
-        $users = User::where('is_admin', false)->orderBy('created_at', 'DESC')->get();
-        return view('admin.dashboard', compact('users'));
+        $users    = User::where('is_admin', false)->orderBy('created_at', 'DESC')->get();
+        $setting  = AdminSetting::first() ?? new AdminSetting();
+        $messages = AdminMessage::where('expires_at', '>', now())
+            ->orderBy('received_at', 'desc')
+            ->get();
+        return view('admin.dashboard', compact('users', 'setting', 'messages'));
     }
 
     /**
@@ -34,6 +40,7 @@ class AdminController extends Controller
             'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'nullable|in:cloud_api,web_automation',
             'plan_type' => 'nullable|in:free,premium',
+            'private_phone' => 'nullable|string|max:20',
         ]);
 
         User::create([
@@ -51,6 +58,7 @@ class AdminController extends Controller
             'connection_type' => $request->connection_type ?? 'web_automation',
             'plan_type' => $request->plan_type ?? 'free',
             'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
+            'private_phone' => $request->private_phone,
         ]);
 
         return back()->with('success', 'New client created successfully.');
@@ -75,6 +83,7 @@ class AdminController extends Controller
             'bulk_message_cost' => 'nullable|numeric|min:0',
             'connection_type' => 'required|in:cloud_api,web_automation',
             'plan_type' => 'required|in:free,premium',
+            'private_phone' => 'nullable|string|max:20',
         ]);
 
         $user->update([
@@ -91,9 +100,37 @@ class AdminController extends Controller
             'connection_type' => $request->connection_type,
             'plan_type' => $request->plan_type,
             'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
+            'private_phone' => $request->private_phone,
         ]);
 
         return back()->with('success', 'User ' . $user->name . ' updated successfully.');
+    }
+
+    public function saveSettings(Request $request)
+    {
+        $request->validate([
+            'admin_whatsapp'    => 'nullable|string|max:20',
+            'bank_name'         => 'nullable|string|max:100',
+            'bank_account_no'   => 'nullable|string|max:50',
+            'bank_account_name' => 'nullable|string|max:100',
+            'bank_branch'       => 'nullable|string|max:100',
+        ]);
+
+        AdminSetting::updateOrCreate(['id' => 1], $request->only([
+            'admin_whatsapp',
+            'bank_name',
+            'bank_account_no',
+            'bank_account_name',
+            'bank_branch',
+        ]));
+
+        return back()->with('success', 'Settings saved successfully.');
+    }
+
+    public function markMessageRead($id)
+    {
+        AdminMessage::where('id', $id)->update(['is_read' => true]);
+        return response()->json(['status' => 'ok']);
     }
 
     /**

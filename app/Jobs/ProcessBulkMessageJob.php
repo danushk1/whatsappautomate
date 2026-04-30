@@ -62,6 +62,43 @@ class ProcessBulkMessageJob implements ShouldQueue
                 Log::info("Bulk image deleted: {$path}");
             }
         }
+
+        $this->checkAndNotifyLowBalance();
+    }
+
+    private function checkAndNotifyLowBalance(): void
+    {
+        $user = $this->user->fresh();
+
+        if ($user->balance > 10 || $user->balance <= 0) return;
+        if (!$user->private_phone) return;
+
+        if ($user->low_balance_notified_at && $user->low_balance_notified_at->gt(now()->subHours(24))) return;
+
+        $setting = \App\Models\AdminSetting::first();
+        $bankLine = $setting
+            ? "Bank: {$setting->bank_name}\nAcc No: {$setting->bank_account_no}\nName: {$setting->bank_account_name}\nBranch: {$setting->bank_branch}"
+            : 'Please contact admin to top up.';
+
+        $message = "⚠️ ඔබේ balance Rs." . number_format($user->balance, 2) . " ක් ඉතිරියි.\n\nTop up karanna:\n{$bankLine}";
+
+        try {
+            Http::withHeaders([
+                'x-api-key'    => config('services.node_bridge.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                'user_id' => $user->id,
+                'phone'   => $user->private_phone,
+                'message' => $message,
+            ]);
+
+            $user->low_balance_notified_at = now();
+            $user->save();
+
+            Log::info("Low balance notification sent (bulk) to user {$user->id}");
+        } catch (\Throwable $e) {
+            Log::error("Low balance notification failed (bulk): " . $e->getMessage());
+        }
     }
 
     private function sendViaNodeBridge(string $phone, string $text, ?string $imageUrl = null): void

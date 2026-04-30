@@ -96,6 +96,26 @@ class WebhookController extends Controller
             return response()->json(['error' => 'User not found'], 404);
         }
 
+        // If admin's WhatsApp received this message → store as admin inbox message
+        if ($user->is_admin) {
+            $fromClean = preg_replace('/[^0-9]/', '', $from);
+            $matched   = User::where('private_phone', $fromClean)
+                ->orWhereRaw("REGEXP_REPLACE(private_phone, '[^0-9]', '') = ?", [$fromClean])
+                ->first();
+
+            \App\Models\AdminMessage::create([
+                'from_number' => $from,
+                'user_id'     => $matched?->id,
+                'message'     => $body,
+                'is_read'     => false,
+                'received_at' => now(),
+                'expires_at'  => now()->addDays(7),
+            ]);
+
+            Log::info("Admin inbox: message stored from {$from}");
+            return response()->json(['status' => 'stored_as_admin_message'], 200);
+        }
+
         if ($user->balance <= 0) {
             Log::warning('Insufficient LKR balance:', ['user_id' => $user->id, 'balance' => $user->balance]);
             return response()->json(['status' => 'insufficient_balance'], 200);
