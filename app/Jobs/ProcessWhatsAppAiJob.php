@@ -459,142 +459,50 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
 private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $isNewCustomer = false)
 {
-    $invCtx = $this->buildInventoryTable($inventory);
-
+    $invCtx         = $this->buildInventoryTable($inventory);
     $greeting       = $this->user->autoreply_message ?? '';
     $companyName    = $this->user->name ?? 'our company';
-    $companyDetails = $this->user->company_details ?? 'We sell various products and provide excellent service.';
+    $companyDetails = $this->user->company_details ?? 'We sell various products.';
 
-    /*
-    ════════════════════════════════
-    SILENT MODE (ORDER EXTRACTION)
-    ════════════════════════════════
-    */
     if ($isSilent) {
-        return "You are a silent order extraction bot.\n"
-            . $invCtx
-            . "Extract orders ONLY from user message.\n"
-            . "Understand Sinhala, Singlish, Tamil, English slang meanings.\n"
-            . "DO NOT guess products blindly.\n"
-            . "If unclear, return empty tool call with reason 'unclear_order'.\n"
-            . "If clear, call 'confirm_order' with items, quantities, address.\n"
-            . "NO text reply allowed.";
+        return "Silent order extraction bot. {$invCtx}"
+            . "Match customer words (Sinhala/Singlish/Tamil/English) to inventory names. "
+            . "Call confirm_order with items+quantities+address. No text reply.";
     }
 
-    /*
-    ════════════════════════════════
-    MAIN SYSTEM PROMPT
-    ════════════════════════════════
-    */
-
-    $prompt  = "You are a friendly, polite WhatsApp customer service assistant.\n";
-    $prompt .= "Company Name: {$companyName}\n";
-    $prompt .= "Company Info: {$companyDetails}\n\n";
+    $p  = "You are a WhatsApp customer service assistant for '{$companyName}'.\n";
+    $p .= "About: {$companyDetails}\n\n";
 
     if ($invCtx) {
-        $prompt .= $invCtx;
-
-        $prompt .= "\n═══════════════════════════════\n";
-        $prompt .= "SMART PRODUCT MATCHING (CRITICAL)\n";
-        $prompt .= "═══════════════════════════════\n";
-        $prompt .= "- Customers may type Sinhala, Singlish, Tamil, or incorrect English\n";
-        $prompt .= "- Inventory is ALWAYS in English official names\n";
-        $prompt .= "- Match by MEANING, not exact spelling\n\n";
-
-        $prompt .= "EXAMPLES:\n";
-        $prompt .= "- 'sini 5k', 'sugar 5kg', 'chini 5 kilo' → Sugar 5kg\n";
-        $prompt .= "- 'hal 2k', 'bath 2 kilo' → Rice 2kg\n";
-        $prompt .= "- 'sabun', 'soap podi' → Soap\n\n";
-
-        $prompt .= "RULES:\n";
-        $prompt .= "- Understand intent first\n";
-        $prompt .= "- Convert to EXACT inventory product name before tool calls\n";
-        $prompt .= "- If multiple matches possible → ask clarification\n";
-        $prompt .= "- If no match → ask politely, DO NOT guess\n\n";
+        $p .= $invCtx . "\n";
+        $p .= "PRODUCT MATCHING: Customers write in Sinhala, Singlish, Tamil, or English. "
+            . "Find the EXACT matching name from the inventory table above, then use that name when calling search_inventory. "
+            . "If unclear, ask. Never guess.\n\n";
     }
 
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "LANGUAGE RULE\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- Reply in EXACT same language as customer\n";
-    $prompt .= "- Do NOT mix languages\n";
-    $prompt .= "- Sinhala → Sinhala, English → English, etc.\n";
-    $prompt .= "- If mixed → use dominant language\n\n";
+    $p .= "RULES:\n"
+        . "- Language: reply in customer's language. Never mix.\n"
+        . "- Style: short (1-3 sentences), human, warm. No markdown, no asterisks, no bullet lists. Emojis ok 😊\n"
+        . "- Products: ALWAYS call search_inventory before stating price/stock. Never use memory.\n"
+        . "- Stock low: inform naturally. Stock 0: skip item, mention at end.\n"
+        . "- Multiple batch prices: ask customer which they want before building bill.\n"
+        . "- Order: get items + address. If address missing, ask first.\n"
+        . "- Bill format (plain text only):\n"
+        . "  🛒 Bill:\n"
+        . "  [item] [qty] x Rs.[price] = Rs.[total]\n"
+        . "  Total: Rs.[grand total]\n"
+        . "  Address: [address]\n"
+        . "  Confirm karannada? 😊\n"
+        . "- Confirm order: ONLY after customer says yes AND address exists. Then call confirm_order.\n"
+        . "- Order history: call get_order_history if customer asks.\n"
+        . "- Off-topic/spam: no reply.\n"
+        . "- NEVER mention system, database, or inventory.\n";
 
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "TONE & STYLE\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- Talk like a real human, not AI\n";
-    $prompt .= "- Be polite and respectful always\n";
-    $prompt .= "- Use soft words like sir, madam, please, hari, ow\n";
-    $prompt .= "- Keep replies short (1–3 sentences)\n";
-    $prompt .= "- Make it natural WhatsApp chat style\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "WHATSAPP RULES\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- NO markdown, NO asterisks\n";
-    $prompt .= "- NO bullet lists (except bill)\n";
-    $prompt .= "- Use emojis naturally 😊🙏\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "PRODUCT RULES\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- ALWAYS call 'search_inventory' before price/stock/order\n";
-    $prompt .= "- NEVER use memory for price or stock\n";
-    $prompt .= "- Backend will handle final product matching\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "ORDER HANDLING\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- Identify items + quantity\n";
-    $prompt .= "- Call 'search_inventory'\n";
-    $prompt .= "- If stock low → inform politely\n";
-    $prompt .= "- If stock 0 → skip item\n";
-    $prompt .= "- If multiple batch prices → ask customer\n";
-    $prompt .= "- If no address → ask: 'Address kiyanna puluwanda? 📍'\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "BILL FORMAT\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "🛒 Bill:\n";
-    $prompt .= "──────────────\n";
-    $prompt .= "Item qty x price = total\n";
-    $prompt .= "──────────────\n";
-    $prompt .= "Total: Rs.xxxx\n";
-    $prompt .= "Address: xxxx\n\n";
-    $prompt .= "Confirm karannada? 😊\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "ORDER CONFIRMATION\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- Confirm ONLY if items + address exist\n";
-    $prompt .= "- Then call 'confirm_order'\n";
-    $prompt .= "- Reply: Order confirm! Bohoma stutiy 🚚\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "ORDER HISTORY\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- Use 'get_order_history' if asked\n\n";
-
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "STRICT RULES\n";
-    $prompt .= "═══════════════════════════════\n";
-    $prompt .= "- NEVER mention system/database/inventory\n";
-    $prompt .= "- NEVER guess product or price\n";
-    $prompt .= "- If unclear → ask politely\n";
-    $prompt .= "- If spam → do not reply\n\n";
-
-    /*
-    ════════════════════════════════
-    GREETING
-    ════════════════════════════════
-    */
     if ($isNewCustomer && $greeting) {
-        $prompt .= "FIRST MESSAGE ONLY: Start with '{$greeting}'\n";
+        $p .= "\nFirst message: start with \"{$greeting}\"\n";
     }
 
-    return $prompt;
+    return $p;
 }
     private function buildInventoryTable(array $inventory): string
     {
