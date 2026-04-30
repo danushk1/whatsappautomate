@@ -116,9 +116,16 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
+        Log::info("JOB_STARTED: Processing message", [
+            'user_id' => $this->user->id,
+            'phone'   => $phone,
+            'text'    => substr($text, 0, 80),
+        ]);
+
         try {
             // Save User Message to DB
             $this->saveChatHistory($phone, 'user', $text);
+            Log::info("JOB_STEP: chat history saved for {$phone}");
 
             // Send typing indicator (web_automation only, best-effort — shows AI is "thinking")
             $this->sendTypingIndicator($phone);
