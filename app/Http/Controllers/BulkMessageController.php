@@ -57,7 +57,7 @@ class BulkMessageController extends Controller
         $imageUrl = null;
         if ($request->hasFile('image')) {
             $path     = $request->file('image')->store('bulk-images', 'public');
-            $imageUrl = asset('storage/' . $path);
+            $imageUrl = $request->getSchemeAndHttpHost() . '/storage/' . $path;
         }
 
         // Deduct balance
@@ -86,8 +86,8 @@ class BulkMessageController extends Controller
         if (strlen($phone) === 10 && str_starts_with($phone, '0')) {
             $phone = '94' . substr($phone, 1);
         }
-        // Reject clearly invalid numbers (too short)
-        if (strlen($phone) < 10) {
+        // Reject invalid numbers (too short or too long — group IDs can be 14-15+ digits)
+        if (strlen($phone) < 10 || strlen($phone) > 13) {
             return '';
         }
         return $phone;
