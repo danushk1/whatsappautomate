@@ -45,5 +45,9 @@ return [
         'url' => env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000'),
         'secret_key' => env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026'),
     ],
+
+    'openai' => [
+        'key' => env('OPENAI_API_KEY'),
+    ],
 ];
 

@@ -92,7 +92,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     $localPath = $mediaService->downloadMedia($audioId, $this->user->target_api_key);
                     Log::info("Downloaded Audio for parsing: {$localPath}");
 
-                    $response = Http::withToken(env('OPENAI_API_KEY'))
+                    $response = Http::withToken(config('services.openai.key'))
                         ->withoutVerifying()
                         ->attach('file', file_get_contents($localPath), 'audio.ogg')
                         ->post('https://api.openai.com/v1/audio/transcriptions', [
@@ -221,7 +221,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             ];
 
             // 1st AI Call
-            $result = Http::withToken(env('OPENAI_API_KEY'))
+            $result = Http::withToken(config('services.openai.key'))
                 ->withoutVerifying()
                 ->timeout(60)
                 ->post('https://api.openai.com/v1/chat/completions', [
@@ -295,7 +295,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 }
 
                 // 2nd AI Call
-                $finalResult = Http::withToken(env('OPENAI_API_KEY'))
+                $finalResult = Http::withToken(config('services.openai.key'))
                     ->withoutVerifying()
                     ->timeout(60)
                     ->post('https://api.openai.com/v1/chat/completions', [
@@ -408,8 +408,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             return;
         }
 
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
-        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+        $nodeBridgeUrl = config('services.node_bridge.url');
+        $apiKey        = config('services.node_bridge.secret_key');
 
         try {
             Http::withHeaders([
@@ -711,8 +711,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
     private function sendViaNodeBridge($phone, $text)
     {
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
-        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+        $nodeBridgeUrl = config('services.node_bridge.url');
+        $apiKey        = config('services.node_bridge.secret_key');
 
         try {
             $response = Http::withHeaders([
