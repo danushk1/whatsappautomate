@@ -148,7 +148,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 ->map(function ($item) {
                     $msg = [
                         'role'    => $item->role,
-                        'content' => $item->content ?? '',
+                        'content' => mb_substr($item->content ?? '', 0, 500),
                     ];
                     if ($item->tool_call_id) {
                         $msg['tool_call_id'] = $item->tool_call_id;
