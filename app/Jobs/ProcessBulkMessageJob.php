@@ -10,6 +10,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class ProcessBulkMessageJob implements ShouldQueue
 {
@@ -52,12 +53,21 @@ class ProcessBulkMessageJob implements ShouldQueue
         }
 
         Log::info("Finished Bulk Broadcast for User ID: {$this->user->id}");
+
+        // Delete image from storage after all messages sent
+        if ($this->imageUrl) {
+            $path = str_replace(url('storage') . '/', '', $this->imageUrl);
+            if (Storage::disk('public')->exists($path)) {
+                Storage::disk('public')->delete($path);
+                Log::info("Bulk image deleted: {$path}");
+            }
+        }
     }
 
     private function sendViaNodeBridge(string $phone, string $text, ?string $imageUrl = null): void
     {
-        $nodeBridgeUrl = env('NODE_BRIDGE_URL', 'http://127.0.0.1:3000');
-        $apiKey        = env('NODE_BRIDGE_SECRET_KEY', 'genify-node-bridge-secret-2026');
+        $nodeBridgeUrl = config('services.node_bridge.url');
+        $apiKey        = config('services.node_bridge.secret_key');
 
         $payload = [
             'user_id' => $this->user->id,

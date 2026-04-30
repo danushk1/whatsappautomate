@@ -461,21 +461,40 @@ app.post('/send-message', async (req, res) => {
         let actualPhone = phone;
         if (phone.includes('@lid') && lidToRealPhone.has(phone)) {
             actualPhone = lidToRealPhone.get(phone);
-            console.log(`[${user_id}] Resolved ${phone} to ${actualPhone}`);
+            console.log(`[${user_id}] Resolved ${phone} → ${actualPhone}`);
         }
 
-        // Format phone number for WhatsApp Web.js (strip @lid and add @c.us if no domain exists)
-        let formattedPhone = actualPhone.replace('@lid', '');
-        const chatId = formattedPhone.includes('@') ? formattedPhone : `${formattedPhone}@c.us`;
-
-        if (image_url) {
-            const media = await MessageMedia.fromUrl(image_url, { unsafeMime: true });
-            await clientData.client.sendMessage(chatId, media, { caption: message || '' });
+        // Build chatId: if @lid and no cache resolution, keep @lid (WhatsApp requires it for LID contacts)
+        let chatId;
+        if (actualPhone.includes('@')) {
+            chatId = actualPhone; // already has domain (@c.us, @lid, @g.us etc.)
         } else {
-            await clientData.client.sendMessage(chatId, message);
+            chatId = `${actualPhone}@c.us`;
         }
-        console.log(`[${user_id}] ✅ Message sent to ${phone}`);
 
+        const sendMsg = async (id) => {
+            if (image_url) {
+                const media = await MessageMedia.fromUrl(image_url, { unsafeMime: true });
+                await clientData.client.sendMessage(id, media, { caption: message || '' });
+            } else {
+                await clientData.client.sendMessage(id, message);
+            }
+        };
+
+        try {
+            await sendMsg(chatId);
+        } catch (err) {
+            // If @c.us fails with LID error, retry with @lid format
+            if (err.message && err.message.includes('No LID') && chatId.endsWith('@c.us')) {
+                const lidId = chatId.replace('@c.us', '@lid');
+                console.log(`[${user_id}] Retrying with @lid: ${lidId}`);
+                await sendMsg(lidId);
+            } else {
+                throw err;
+            }
+        }
+
+        console.log(`[${user_id}] ✅ Message sent to ${phone}`);
         res.json({ status: 'sent', to: phone });
     } catch (err) {
         console.error(`[${user_id}] Send message error:`, err);
