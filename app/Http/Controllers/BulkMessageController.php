@@ -29,7 +29,6 @@ class BulkMessageController extends Controller
             'image'      => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
         ]);
 
-        // At least one of message or image is required
         if (empty($request->message) && !$request->hasFile('image')) {
             return back()->withErrors(['message' => 'Please provide a message or an image.']);
         }
