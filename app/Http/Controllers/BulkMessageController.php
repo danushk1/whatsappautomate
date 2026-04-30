@@ -56,7 +56,7 @@ class BulkMessageController extends Controller
         $imageUrl = null;
         if ($request->hasFile('image')) {
             $path     = $request->file('image')->store('bulk-images', 'public');
-            $imageUrl = $request->getSchemeAndHttpHost() . '/storage/' . $path;
+            $imageUrl = url('storage/' . $path);
         }
 
         // Deduct balance
