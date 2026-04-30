@@ -69,6 +69,8 @@ class ProcessBulkMessageJob implements ShouldQueue
             $payload['image_url'] = $imageUrl;
         }
 
+        Log::info("Bulk send payload", ['phone' => $phone, 'image_url' => $imageUrl ?? 'none']);
+
         $response = Http::withHeaders([
             'x-api-key'    => $apiKey,
             'Content-Type' => 'application/json',
