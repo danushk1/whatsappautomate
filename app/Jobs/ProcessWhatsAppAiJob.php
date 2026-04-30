@@ -136,12 +136,15 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             // Assemble Prompt — passes new-customer flag for dynamic greeting
             $systemPrompt = $this->getSystemPrompt($isSilentExtraction, $inventoryList, $isNewCustomer);
 
-            // Fetch last 3 days of history (changed from 24h to full 3-day window)
+            // Fetch last 20 messages within 3 days — cap prevents token overflow
             $history = ChatHistory::where('user_id', $this->user->id)
                 ->where('phone', $phone)
                 ->where('timestamp', '>', now()->subDays(3))
-                ->orderBy('timestamp', 'asc')
+                ->orderBy('timestamp', 'desc')
+                ->limit(20)
                 ->get()
+                ->reverse()
+                ->values()
                 ->map(function ($item) {
                     $msg = [
                         'role'    => $item->role,
