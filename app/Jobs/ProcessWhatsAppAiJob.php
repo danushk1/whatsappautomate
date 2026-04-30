@@ -56,8 +56,11 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
         // Enforce Free Plan Limits (Max 3 Contacts)
         if ($this->user->plan_type === 'free') {
-            $contactCount = \App\Models\Contact::where('user_id', $this->user->id)->count();
-            $contactExists = \App\Models\Contact::where('user_id', $this->user->id)->where('phone', $realPhone)->exists();
+            $contactCount  = \App\Models\Contact::where('user_id', $this->user->id)->count();
+            $contactExists = \App\Models\Contact::where('user_id', $this->user->id)
+                ->where(function ($q) use ($realPhone, $rawPhone) {
+                    $q->where('phone', $realPhone)->orWhere('phone', $rawPhone);
+                })->exists();
 
             if (!$contactExists && $contactCount >= 3) {
                 Log::info("Free plan contact limit reached for user {$this->user->id}. Ignored message from {$realPhone}.");
