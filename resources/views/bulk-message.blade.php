@@ -35,15 +35,15 @@
         </div>
     </nav>
 
-    <div class="max-w-6xl mx-auto px-6 py-8">
+    <div class="max-w-6xl mx-auto px-3 sm:px-6 py-5 sm:py-8">
         
         <!-- Header Section -->
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
             <div>
-                <h2 class="text-3xl font-extrabold text-white tracking-tight">Mass Broadcast Campaign</h2>
+                <h2 class="text-xl sm:text-3xl font-extrabold text-white tracking-tight">Mass Broadcast Campaign</h2>
                 <p class="text-slate-400 mt-2">Send bulk promotional messages to your past customers.</p>
             </div>
-            <div class="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 text-right min-w-[200px]">
+            <div class="bg-emerald-500/10 p-4 rounded-2xl border border-emerald-500/20 text-right w-full md:w-auto md:min-w-[200px]">
                 <p class="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Available Balance</p>
                 <div class="flex items-baseline space-x-2 justify-end">
                     <span class="text-2xl font-black text-white">Rs. {{ number_format($user->balance, 2) }}</span>
@@ -82,11 +82,11 @@
         <form action="{{ route('bulk-message.send') }}" method="POST" enctype="multipart/form-data" id="broadcastForm">
             @csrf
             
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8">
                 
                 <!-- Left Column: Recipients -->
-                <div class="lg:col-span-5 flex flex-col h-[600px]">
-                    <div class="glass-card rounded-[2rem] p-6 flex flex-col h-full border-slate-800">
+                <div class="lg:col-span-5 flex flex-col h-[420px] sm:h-[520px] lg:h-[600px]">
+                    <div class="glass-card rounded-[2rem] p-4 sm:p-6 flex flex-col h-full border-slate-800">
                         <div class="flex items-center justify-between mb-4">
                             <div>
                                 <h3 class="text-lg font-bold text-white">Audience List</h3>
@@ -159,7 +159,7 @@
                 <div class="lg:col-span-7 flex flex-col space-y-6">
                     
                     <!-- Message Composer -->
-                    <div class="glass-card rounded-[2rem] p-8 border-slate-800 flex-1">
+                    <div class="glass-card rounded-[2rem] p-4 sm:p-8 border-slate-800 flex-1">
                         <div class="flex items-center space-x-3 mb-6">
                             <div class="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center text-purple-400">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
@@ -214,20 +214,20 @@
                     </div>
 
                     <!-- Billing & Submit -->
-                    <div class="glass-card rounded-[2rem] p-8 border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 relative overflow-hidden">
+                    <div class="glass-card rounded-[2rem] p-4 sm:p-8 border-emerald-500/20 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 relative overflow-hidden">
                         <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                             
                             <div class="space-y-1">
                                 <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Estimated Cost</p>
                                 <div class="flex items-end space-x-2">
-                                    <h2 class="text-4xl font-black text-white" id="totalCostDisplay">Rs. 0.00</h2>
+                                    <h2 class="text-2xl sm:text-4xl font-black text-white" id="totalCostDisplay">Rs. 0.00</h2>
                                 </div>
                                 <p class="text-xs font-medium text-emerald-400 mt-1">
                                     <span id="selectedCountFooter">0</span> recipients × Rs. {{ number_format($costPerMessage, 2) }}
                                 </p>
                             </div>
 
-                            <button type="submit" id="sendBtn" class="bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 px-10 rounded-2xl text-lg shadow-2xl shadow-emerald-500/20 transform transition active:scale-[0.98] flex items-center justify-center group disabled:opacity-50 disabled:cursor-not-allowed">
+                            <button type="submit" id="sendBtn" class="w-full md:w-auto bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 px-10 rounded-2xl text-lg shadow-2xl shadow-emerald-500/20 transform transition active:scale-[0.98] flex items-center justify-center group disabled:opacity-50 disabled:cursor-not-allowed">
                                 <span>SEND BROADCAST</span>
                                 <svg class="w-5 h-5 ml-3 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
                             </button>
