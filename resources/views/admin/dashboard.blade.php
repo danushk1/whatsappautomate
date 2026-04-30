@@ -24,8 +24,8 @@
                 </div>
                 <h1 class="text-xl font-extrabold tracking-tight text-white">GenifyAI <span class="text-blue-500">Admin</span></h1>
             </div>
-            <div class="flex items-center space-x-6">
-            <a href="{{ route('dashboard', ['view' => 'client']) }}" class="text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest">Client View</a>
+            <div class="flex items-center space-x-3 sm:space-x-6">
+            <a href="{{ route('dashboard', ['view' => 'client']) }}" class="text-xs font-bold text-slate-500 hover:text-white transition-colors uppercase tracking-widest hidden sm:inline">Client View</a>
                 <form action="{{ route('logout') }}" method="POST">
                     @csrf
                     <button type="submit" class="text-xs font-bold text-red-500/80 hover:text-red-500 transition-colors uppercase tracking-widest">Sign Out</button>
@@ -34,14 +34,14 @@
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto px-6 py-12">
+    <div class="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-12">
         
         <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-12">
             <div>
-                <h2 class="text-4xl font-extrabold text-white tracking-tight">Client Infrastructure</h2>
-                <p class="text-slate-400 mt-2 text-lg">Manage all client organizations, quotas, and service configurations.</p>
+                <h2 class="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">Client Infrastructure</h2>
+                <p class="text-slate-400 mt-2 text-sm sm:text-lg">Manage all client organizations, quotas, and service configurations.</p>
             </div>
-            <button onclick="openAddModal()" class="px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-600/20 transform transition active:scale-[0.98]">
+            <button onclick="openAddModal()" class="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-2xl shadow-xl shadow-blue-600/20 transform transition active:scale-[0.98]">
                 + ADD NEW CLIENT
             </button>
         </div>
@@ -70,8 +70,8 @@
         @endif
 
         <!-- Management Table -->
-        <div class="glass-card rounded-[2.5rem] overflow-hidden shadow-2xl">
-            <div class="p-8 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="glass-card rounded-[2.5rem] shadow-2xl overflow-hidden">
+            <div class="p-4 sm:p-8 border-b border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <h3 class="text-xl font-bold text-white">Active Organizations</h3>
                 <div class="relative w-full md:w-72">
                     <input type="text" id="userSearch" onkeyup="searchUsers()" placeholder="Search by name or email..." 
@@ -80,26 +80,27 @@
                 </div>
             </div>
             
-            <table class="w-full text-left border-collapse" id="userTable">
+            <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse min-w-[640px]" id="userTable">
                 <thead>
                     <tr class="bg-slate-900/50 border-b border-slate-800">
-                        <th class="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Organization / Client</th>
-                        <th class="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
-                        <th class="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">WhatsApp ID</th>
-                        <th class="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Balance (LKR)</th>
-                        <th class="px-8 py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Organization / Client</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Status</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">WhatsApp ID</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest">Balance (LKR)</th>
+                        <th class="px-4 sm:px-8 py-4 sm:py-6 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach($users as $u)
                     <tr class="border-b border-slate-800/50 hover:bg-slate-800/20 transition-all group">
-                        <td class="px-8 py-6">
+                        <td class="px-4 sm:px-8 py-3 sm:py-6">
                             <div class="flex flex-col">
                                 <span class="text-white font-bold group-hover:text-blue-400 transition-colors">{{ $u->name }}</span>
                                 <span class="text-[10px] text-slate-500 font-mono">{{ $u->email }}</span>
                             </div>
                         </td>
-                        <td class="px-8 py-6">
+                        <td class="px-4 sm:px-8 py-3 sm:py-6">
                             @if($u->status == 'active')
                                 <span class="px-3 py-1 bg-emerald-500/10 text-emerald-500 text-[10px] font-bold rounded-full border border-emerald-500/20 uppercase tracking-widest">ACTIVE</span>
                             @else
@@ -112,13 +113,13 @@
                                 <span class="ml-2 px-3 py-1 bg-slate-500/10 text-slate-400 text-[10px] font-bold rounded-full border border-slate-500/20 uppercase tracking-widest">FREE</span>
                             @endif
                         </td>
-                        <td class="px-8 py-6">
+                        <td class="px-4 sm:px-8 py-3 sm:py-6">
                             <span class="text-xs font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-slate-800">{{ $u->whatsapp_phone_number_id ?: 'UNASSIGNED' }}</span>
                         </td>
-                        <td class="px-8 py-6">
+                        <td class="px-4 sm:px-8 py-3 sm:py-6">
                             <span class="text-emerald-400 font-black text-lg">Rs. {{ number_format($u->balance, 2) }}</span>
                         </td>
-                        <td class="px-8 py-6 text-right">
+                        <td class="px-4 sm:px-8 py-3 sm:py-6 text-right">
                             <div class="flex items-center justify-end space-x-3">
                                 <button onclick='openEditModal(@json($u))' class="p-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 rounded-xl transition font-bold text-xs px-4 py-2 border border-blue-600/20">MANAGE</button>
                                 <form action="{{ route('admin.users.delete', $u->id) }}" method="POST" onsubmit="return confirm('SURE ABOUT DELETING THIS CLIENT? ALL DATA WILL BE LOST.');">
@@ -133,13 +134,14 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         </div>
     </div>
 
     <!-- Add New Client Modal -->
-    <div id="addModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[100] flex items-center justify-center p-6">
-        <div class="glass-card max-w-lg w-full rounded-[3rem] p-10 relative shadow-2xl border-blue-500/20 max-h-[95vh] overflow-y-auto">
-            <h3 class="text-2xl font-extrabold text-white mb-8 border-b border-slate-800 pb-4">Register New Client</h3>
+    <div id="addModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[100] flex items-center justify-center p-3 sm:p-6">
+        <div class="glass-card max-w-lg w-full rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-10 relative shadow-2xl border-blue-500/20 max-h-[95vh] overflow-y-auto">
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mb-5 sm:mb-8 border-b border-slate-800 pb-4">Register New Client</h3>
             <form action="{{ route('admin.users.store') }}" method="POST" class="space-y-6">
                 @csrf
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -212,9 +214,9 @@
     </div>
 
     <!-- Edit/Manage Modal -->
-    <div id="editModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[100] flex items-center justify-center p-6">
-        <div class="glass-card max-w-lg w-full rounded-[3rem] p-10 relative shadow-2xl border-emerald-500/20 max-h-[95vh] overflow-y-auto">
-            <h3 class="text-2xl font-extrabold text-white mb-8 border-b border-slate-800 pb-4">Infrastucture Overhaul</h3>
+    <div id="editModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden z-[100] flex items-center justify-center p-3 sm:p-6">
+        <div class="glass-card max-w-lg w-full rounded-[2rem] sm:rounded-[3rem] p-5 sm:p-10 relative shadow-2xl border-emerald-500/20 max-h-[95vh] overflow-y-auto">
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mb-5 sm:mb-8 border-b border-slate-800 pb-4">Infrastucture Overhaul</h3>
             <form id="editForm" method="POST" class="space-y-6">
                 @csrf
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
