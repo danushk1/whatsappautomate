@@ -205,7 +205,7 @@
                                 </div>
                             </div>
 
-                            <!-- Google Sheets Fields -->
+                           
                             <div id="fields-excel" class="{{ $user->google_sheet_name ? '' : 'hidden' }} space-y-8">
                                 <div class="bg-indigo-500/5 border border-indigo-500/10 p-6 rounded-2xl flex items-start">
                                     <div class="w-10 h-10 bg-indigo-500/20 rounded-xl flex items-center justify-center mr-4 shrink-0">
