@@ -69,6 +69,41 @@
             </div>
         @endif
 
+        <!-- Admin WhatsApp Status -->
+        <div class="glass-card rounded-[2rem] p-4 sm:p-6 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4
+            {{ $adminUser->whatsapp_session ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-amber-500/20 bg-amber-500/5' }}">
+            <div class="flex items-center gap-4">
+                <div class="w-12 h-12 rounded-xl flex items-center justify-center shrink-0
+                    {{ $adminUser->whatsapp_session ? 'bg-emerald-500/20' : 'bg-amber-500/20' }}">
+                    <svg class="w-6 h-6 {{ $adminUser->whatsapp_session ? 'text-emerald-400' : 'text-amber-400' }}"
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <p class="text-xs font-black uppercase tracking-widest
+                        {{ $adminUser->whatsapp_session ? 'text-emerald-400' : 'text-amber-400' }}">
+                        Admin WhatsApp — {{ $adminUser->whatsapp_session ? 'Connected ✓' : 'Not Connected' }}
+                    </p>
+                    <p class="text-sm text-slate-400 mt-0.5">
+                        @if($adminUser->whatsapp_session)
+                            Balance notifications are sent from this number.
+                        @else
+                            Connect your WhatsApp to send low balance alerts to clients.
+                        @endif
+                    </p>
+                </div>
+            </div>
+            <a href="{{ route('whatsapp.connect') }}"
+                class="shrink-0 px-6 py-3 rounded-xl font-black text-sm transition
+                {{ $adminUser->whatsapp_session
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20'
+                    : 'bg-amber-500 text-white hover:bg-amber-600 shadow-lg shadow-amber-500/20' }}">
+                {{ $adminUser->whatsapp_session ? 'Manage Connection' : '+ Connect WhatsApp' }}
+            </a>
+        </div>
+
         <!-- Admin Settings -->
         <div class="glass-card rounded-[2rem] p-4 sm:p-8 mb-8 border-blue-500/10">
             <h3 class="text-lg font-bold text-white mb-5 flex items-center gap-2">
@@ -117,7 +152,7 @@
                         <textarea name="low_balance_message" rows="4"
                             class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-amber-500 outline-none transition text-sm placeholder-slate-600 resize-none"
                             placeholder="⚠️ ඔබේ balance Rs.X ක් ඉතිරියි. Top up karanna: Bank details...">{{ $setting->low_balance_message }}</textarea>
-                        <p class="text-[10px] text-slate-600 mt-1">Leave empty to use default. Bank details auto-appended if set above.</p>
+                        <p class="text-[10px] text-slate-600 mt-1">Use <span class="text-amber-500/80">{balance}</span> for remaining credits, <span class="text-amber-500/80">{name}</span> for company name. Bank details auto-appended.</p>
                     </div>
                     <div>
                         <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
@@ -126,7 +161,7 @@
                         <textarea name="suspended_message" rows="4"
                             class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-red-500 outline-none transition text-sm placeholder-slate-600 resize-none"
                             placeholder="⚠️ ඔබේ service close වී ඇත. Reactivate karanna: Bank details...">{{ $setting->suspended_message }}</textarea>
-                        <p class="text-[10px] text-slate-600 mt-1">Leave empty to use default. Must start with ⚠️ to avoid saving to chat history.</p>
+                        <p class="text-[10px] text-slate-600 mt-1">Use <span class="text-red-500/80">{balance}</span> for remaining credits, <span class="text-red-500/80">{name}</span> for company name. Must start with ⚠️</p>
                     </div>
                 </div>
             </form>
@@ -221,19 +256,28 @@
             </div>
             <div class="divide-y divide-slate-800/50">
                 @foreach($messages as $msg)
-                <div class="p-4 sm:p-6 flex items-start gap-4 transition-all {{ $msg->is_read ? 'opacity-60' : 'bg-amber-500/5' }}" id="msg-{{ $msg->id }}">
-                    <div class="w-10 h-10 rounded-full {{ $msg->is_read ? 'bg-slate-800' : 'bg-amber-500/20' }} flex items-center justify-center shrink-0">
-                        <svg class="w-5 h-5 {{ $msg->is_read ? 'text-slate-500' : 'text-amber-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                @php $isSystem = $msg->from_number === 'system'; @endphp
+                <div class="p-4 sm:p-6 flex items-start gap-4 transition-all {{ $msg->is_read ? 'opacity-60' : ($isSystem ? 'bg-blue-500/5' : 'bg-amber-500/5') }}" id="msg-{{ $msg->id }}">
+                    <div class="w-10 h-10 rounded-full {{ $isSystem ? 'bg-blue-500/20' : ($msg->is_read ? 'bg-slate-800' : 'bg-amber-500/20') }} flex items-center justify-center shrink-0">
+                        @if($isSystem)
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        @else
+                            <svg class="w-5 h-5 {{ $msg->is_read ? 'text-slate-500' : 'text-amber-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                        @endif
                     </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex flex-wrap items-center gap-2 mb-1">
-                            <span class="text-sm font-bold text-white">{{ $msg->from_number }}</span>
+                            @if($isSystem)
+                                <span class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold">📤 Sent Alert</span>
+                            @else
+                                <span class="text-sm font-bold text-white">{{ $msg->from_number }}</span>
+                            @endif
                             @if($msg->user)
-                                <span class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full">{{ $msg->user->name }}</span>
+                                <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{{ $msg->user->name }}</span>
                             @else
                                 <span class="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full">Unknown</span>
                             @endif
-                            @if(!$msg->is_read)
+                            @if(!$msg->is_read && !$isSystem)
                                 <span class="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase">New</span>
                             @endif
                         </div>

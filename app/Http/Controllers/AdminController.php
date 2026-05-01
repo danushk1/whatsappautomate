@@ -14,12 +14,13 @@ class AdminController extends Controller
      */
     public function index()
     {
-        $users    = User::where('is_admin', false)->orderBy('created_at', 'DESC')->get();
-        $setting  = AdminSetting::first() ?? new AdminSetting();
-        $messages = AdminMessage::where('expires_at', '>', now())
+        $users     = User::where('is_admin', false)->orderBy('created_at', 'DESC')->get();
+        $setting   = AdminSetting::first() ?? new AdminSetting();
+        $messages  = AdminMessage::where('expires_at', '>', now())
             ->orderBy('received_at', 'desc')
             ->get();
-        return view('admin.dashboard', compact('users', 'setting', 'messages'));
+        $adminUser = auth()->user(); // admin's own WhatsApp connection status
+        return view('admin.dashboard', compact('users', 'setting', 'messages', 'adminUser'));
     }
 
     /**
@@ -86,6 +87,8 @@ class AdminController extends Controller
             'private_phone' => 'nullable|string|max:20',
         ]);
 
+        $resetNotifications = $request->balance > 10;
+
         $user->update([
             'balance' => $request->balance,
             'status' => $request->status,
@@ -101,6 +104,8 @@ class AdminController extends Controller
             'plan_type' => $request->plan_type,
             'bulk_message_cost' => $request->bulk_message_cost ?? 0.30,
             'private_phone' => $request->private_phone,
+            'low_balance_notified_at' => $resetNotifications ? null : $user->low_balance_notified_at,
+            'suspended_notified_at'   => $resetNotifications ? null : $user->suspended_notified_at,
         ]);
 
         return back()->with('success', 'User ' . $user->name . ' updated successfully.');
