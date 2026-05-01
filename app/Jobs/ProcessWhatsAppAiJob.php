@@ -221,6 +221,23 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                         ],
                     ],
                 ],
+                [
+                    "type" => "function",
+                    "function" => [
+                        "name"        => "escalate_to_admin",
+                        "description" => "Notify a human admin and tell the customer a team member will contact them. Call this when: customer asks for a phone call, requests payment credit or a delay, wants a large bulk order the bot cannot price, asks something genuinely outside the bot's ability, or expresses frustration. Do NOT call for normal product or order questions.",
+                        "parameters"  => [
+                            "type"       => "object",
+                            "properties" => [
+                                "reason" => [
+                                    "type"        => "string",
+                                    "description" => "Short English summary of what the customer needs (e.g. 'Wants a phone call', 'Requesting credit/delay', 'Bulk order inquiry').",
+                                ],
+                            ],
+                            "required" => ["reason"],
+                        ],
+                    ],
+                ],
             ];
 
             // 1st AI Call
@@ -293,6 +310,18 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                             'tool_call_id' => $toolCall['id'],
                             'name'         => 'get_order_history',
                             'content'      => json_encode($orderHistory),
+                        ];
+
+                    } elseif ($toolCall['function']['name'] === 'escalate_to_admin') {
+                        $args   = json_decode($toolCall['function']['arguments'], true);
+                        $reason = $args['reason'] ?? 'Customer needs assistance';
+                        $this->escalateToAdmin($phone, $reason);
+
+                        $messages[] = [
+                            'role'         => 'tool',
+                            'tool_call_id' => $toolCall['id'],
+                            'name'         => 'escalate_to_admin',
+                            'content'      => json_encode(['status' => 'notified', 'instruction' => 'Admin has been notified. Now tell the customer warmly that a team member will contact them shortly.']),
                         ];
                     }
                 }
@@ -486,7 +515,9 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Smoothly redirect to what IS available.\n";
         $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): do NOT just say 'nathi'. Respond naturally like a polite shopkeeper — e.g. if customer asks for 'hal': 'Hal nam dan api laga na sir/madam 🙏 api langa Dan Dhal, Paan Piti, Coconut Oil thiyenava, mokakda one?' — use 'sir' or 'madam' based on tone, pick real IN-STOCK items from the table above.\n";
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
-        $p .= "• STOCK QUANTITY — NEVER reveal stock numbers to the customer. Never say 'we have 50kg left' or 'stock 20 units'. Stock is internal info only. If customer asks 'can I get 10kg?' — just confirm yes or no based on whether stock covers it, without mentioning the actual quantity.\n";
+        $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
+        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity cannot be fulfilled: say it plainly in one short sentence. e.g. 'Api langa dan [X]kg thiyenne, ema pamana denna baeri sir 🙏' — clear and simple. Do NOT add unrelated item suggestions.\n";
+        $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
         $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
@@ -515,6 +546,17 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "  Confirm karannada? 😊\n";
     $p .= "• Call confirm_order ONLY after: customer says YES/OK/hari AND address is provided.\n";
     $p .= "• If customer asks about past orders, call get_order_history.\n";
+    $p .= "━━━━━━━━━━━━━━━━━\n\n";
+
+    $p .= "━━━ ESCALATION ━━━\n";
+    $p .= "• Call escalate_to_admin when the customer:\n";
+    $p .= "  - Asks for a phone call or personal contact\n";
+    $p .= "  - Requests credit, payment delay, or to pay later\n";
+    $p .= "  - Wants a very large bulk order you cannot price confidently\n";
+    $p .= "  - Asks something genuinely outside your ability to answer\n";
+    $p .= "  - Seems frustrated or unhappy\n";
+    $p .= "• After calling escalate_to_admin, tell the customer warmly: 'Poddak inna sir/madam, ape kenek obta ikmanin katha karai 😊' (or equivalent in their language).\n";
+    $p .= "• Do NOT call escalate_to_admin for normal product, price, or order questions.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n";
 
     if ($isNewCustomer) {
@@ -894,6 +936,49 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
         Log::warning("No Google Sheet found for name: {$name}. Check permissions to the service account bot.");
         return null;
+    }
+
+    private function escalateToAdmin(string $customerPhone, string $reason): void
+    {
+        try {
+            $admin   = \App\Models\User::where('is_admin', true)->first();
+            $setting = \App\Models\AdminSetting::first();
+
+            if (!$admin) return;
+
+            $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
+            $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+
+            $adminMsg = "📞 Customer Escalation\n"
+                . "📱 Number: {$cleanPhone}\n"
+                . "❓ Reason: {$reason}";
+
+            // Send to admin's personal WhatsApp if configured
+            if ($setting?->admin_whatsapp) {
+                Http::withHeaders([
+                    'x-api-key'    => config('services.node_bridge.secret_key'),
+                    'Content-Type' => 'application/json',
+                ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                    'user_id' => $admin->id,
+                    'phone'   => $setting->admin_whatsapp,
+                    'message' => $adminMsg,
+                ]);
+            }
+
+            // Save to admin inbox
+            \App\Models\AdminMessage::create([
+                'from_number' => $cleanPhone,
+                'user_id'     => null,
+                'message'     => "📞 {$reason}",
+                'is_read'     => false,
+                'received_at' => now(),
+                'expires_at'  => now()->addDays(7),
+            ]);
+
+            Log::info("Escalation sent to admin for {$customerPhone}: {$reason}");
+        } catch (\Throwable $e) {
+            Log::error("Escalation failed: " . $e->getMessage());
+        }
     }
 
     private function checkAndNotifyLowBalance(): void
