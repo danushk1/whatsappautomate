@@ -552,14 +552,14 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "━━━━━━━━━━━━━━━━━\n\n";
 
     $p .= "━━━ ESCALATION ━━━\n";
-    $p .= "• Call escalate_to_admin when the customer:\n";
-    $p .= "  - Asks for a phone call or personal contact\n";
-    $p .= "  - Requests credit, payment delay, or to pay later\n";
-    $p .= "  - Wants a very large bulk order you cannot price confidently\n";
-    $p .= "  - Asks something genuinely outside your ability to answer\n";
-    $p .= "  - Seems frustrated or unhappy\n";
-    $p .= "• After calling escalate_to_admin, tell the customer warmly: 'Poddak inna sir/madam, ape kenek obta ikmanin katha karai 😊' (or equivalent in their language).\n";
-    $p .= "• Do NOT call escalate_to_admin for normal product, price, or order questions.\n";
+    $p .= "RULE: You MUST call the escalate_to_admin tool BEFORE writing any reply when:\n";
+    $p .= "  - Customer asks for a phone call or to speak to a person\n";
+    $p .= "  - Customer requests credit, payment delay, or to pay later\n";
+    $p .= "  - Customer wants a bulk order beyond what stock can cover\n";
+    $p .= "  - Customer is frustrated, complaining, or asks something you truly cannot answer\n";
+    $p .= "• The tool call MUST happen first — do NOT reply 'poddak inna' or anything similar unless escalate_to_admin has been called in this same turn.\n";
+    $p .= "• After the tool call succeeds, THEN tell the customer warmly in their language that someone will contact them shortly.\n";
+    $p .= "• For normal product/price/order questions: do NOT call escalate_to_admin.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n";
 
     if ($isNewCustomer) {
@@ -946,6 +946,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     {
         try {
             $notifyPhone = $this->user->private_phone;
+            Log::info("ESCALATE: user={$this->user->id} private_phone=" . ($notifyPhone ?? 'NULL') . " reason={$reason}");
             if (!$notifyPhone) return;
 
             // Normalize owner number: 077... → 9477...

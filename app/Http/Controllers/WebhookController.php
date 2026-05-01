@@ -80,14 +80,24 @@ class WebhookController extends Controller
             if (!str_starts_with($body, '⚠️')) {
                 $user = User::find($userId);
                 if ($user && $body) {
-                    $chat = \App\Models\ChatHistory::create([
-                        'user_id' => $user->id,
-                        'phone' => $from,
-                        'role' => 'assistant',
-                        'content' => $body,
-                        'timestamp' => now()
-                    ]);
-                    broadcast(new \App\Events\MessageReceived($chat));
+                    // Deduplicate: job already saves bot replies — skip if same message saved in last 30s
+                    $alreadySaved = \App\Models\ChatHistory::where('user_id', $user->id)
+                        ->where('phone', $from)
+                        ->where('role', 'assistant')
+                        ->where('content', $body)
+                        ->where('timestamp', '>', now()->subSeconds(30))
+                        ->exists();
+
+                    if (!$alreadySaved) {
+                        $chat = \App\Models\ChatHistory::create([
+                            'user_id'   => $user->id,
+                            'phone'     => $from,
+                            'role'      => 'assistant',
+                            'content'   => $body,
+                            'timestamp' => now(),
+                        ]);
+                        broadcast(new \App\Events\MessageReceived($chat));
+                    }
                 }
             }
             return response()->json(['status' => 'saved'], 200);
