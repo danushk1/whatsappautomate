@@ -256,36 +256,44 @@
             </div>
             <div class="divide-y divide-slate-800/50">
                 @foreach($messages as $msg)
-                @php $isSystem = $msg->from_number === 'system'; @endphp
-                <div class="p-4 sm:p-6 flex items-start gap-4 transition-all {{ $msg->is_read ? 'opacity-60' : ($isSystem ? 'bg-blue-500/5' : 'bg-amber-500/5') }}" id="msg-{{ $msg->id }}">
-                    <div class="w-10 h-10 rounded-full {{ $isSystem ? 'bg-blue-500/20' : ($msg->is_read ? 'bg-slate-800' : 'bg-amber-500/20') }} flex items-center justify-center shrink-0">
+                @php $isSystem = $msg->from_number === 'system'; $isUnread = !$msg->is_read; @endphp
+                <div class="flex items-start gap-4 transition-all
+                    {{ $isSystem
+                        ? 'p-4 sm:p-6 ' . ($msg->is_read ? 'opacity-50' : 'bg-blue-500/5')
+                        : 'p-4 sm:p-6 pl-5 sm:pl-8 border-l-4 ' . ($isUnread ? 'border-amber-400 bg-amber-500/10 shadow-[inset_4px_0_12px_rgba(251,191,36,0.07)]' : 'border-slate-700 opacity-50')
+                    }}" id="msg-{{ $msg->id }}">
+
+                    <div class="w-10 h-10 rounded-full flex items-center justify-center shrink-0
+                        {{ $isSystem ? 'bg-blue-500/20' : ($isUnread ? 'bg-amber-400/20 ring-2 ring-amber-400/30' : 'bg-slate-800') }}">
                         @if($isSystem)
                             <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
                         @else
-                            <svg class="w-5 h-5 {{ $msg->is_read ? 'text-slate-500' : 'text-amber-400' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                            <svg class="w-5 h-5 {{ $isUnread ? 'text-amber-400' : 'text-slate-500' }}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                         @endif
                     </div>
+
                     <div class="flex-1 min-w-0">
                         <div class="flex flex-wrap items-center gap-2 mb-1">
                             @if($isSystem)
                                 <span class="text-xs bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold">📤 Sent Alert</span>
                             @else
-                                <span class="text-sm font-bold text-white">{{ $msg->from_number }}</span>
+                                <span class="text-sm font-bold {{ $isUnread ? 'text-amber-300' : 'text-slate-400' }}">{{ $msg->from_number }}</span>
+                                @if($isUnread)
+                                    <span class="text-[10px] bg-amber-400 text-slate-900 px-2 py-0.5 rounded-full font-black uppercase tracking-wider">💬 Incoming</span>
+                                @endif
                             @endif
                             @if($msg->user)
                                 <span class="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded-full">{{ $msg->user->name }}</span>
                             @else
                                 <span class="text-xs bg-slate-800 text-slate-500 px-2 py-0.5 rounded-full">Unknown</span>
                             @endif
-                            @if(!$msg->is_read && !$isSystem)
-                                <span class="text-[10px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold uppercase">New</span>
-                            @endif
                         </div>
-                        <p class="text-sm text-slate-300 whitespace-pre-wrap break-words">{{ $msg->message }}</p>
+                        <p class="text-sm {{ (!$isSystem && $isUnread) ? 'text-white' : 'text-slate-300' }} whitespace-pre-wrap break-words">{{ $msg->message }}</p>
                         <p class="text-[10px] text-slate-600 mt-1">{{ $msg->received_at->diffForHumans() }} · expires {{ $msg->expires_at->diffForHumans() }}</p>
                     </div>
-                    @if(!$msg->is_read)
-                    <button onclick="markRead({{ $msg->id }})" class="text-xs text-slate-500 hover:text-white transition shrink-0 mt-1">✓ Mark read</button>
+
+                    @if($isUnread)
+                    <button onclick="markRead({{ $msg->id }})" class="text-xs {{ $isSystem ? 'text-slate-500 hover:text-white' : 'text-amber-500 hover:text-amber-300' }} transition shrink-0 mt-1 font-bold">✓ Read</button>
                     @endif
                 </div>
                 @endforeach
@@ -497,7 +505,14 @@
                 headers: { 'X-CSRF-TOKEN': '{{ csrf_token() }}', 'Content-Type': 'application/json' }
             }).then(() => {
                 const el = document.getElementById('msg-' + id);
-                if (el) { el.classList.add('opacity-60'); el.classList.remove('bg-amber-500/5'); }
+                if (!el) return;
+                el.classList.add('opacity-50');
+                el.classList.remove('bg-amber-500/10', 'bg-blue-500/5', 'border-amber-400');
+                el.classList.add('border-slate-700');
+                const badge = el.querySelector('.bg-amber-400');
+                if (badge) badge.remove();
+                const btn = el.querySelector('button');
+                if (btn) btn.remove();
             });
         }
 
