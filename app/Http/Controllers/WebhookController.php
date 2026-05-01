@@ -76,16 +76,19 @@ class WebhookController extends Controller
 
         // If the message was sent by the owner from their phone, just save it to chat history and stop.
         if (!empty($payload['from_me']) && $payload['from_me'] == true) {
-            $user = User::find($userId);
-            if ($user && $body) {
-                $chat = \App\Models\ChatHistory::create([
-                    'user_id' => $user->id,
-                    'phone' => $from,
-                    'role' => 'assistant',
-                    'content' => $body,
-                    'timestamp' => now()
-                ]);
-                broadcast(new \App\Events\MessageReceived($chat));
+            // Skip system notifications (low balance / suspended alerts) — they start with ⚠️
+            if (!str_starts_with($body, '⚠️')) {
+                $user = User::find($userId);
+                if ($user && $body) {
+                    $chat = \App\Models\ChatHistory::create([
+                        'user_id' => $user->id,
+                        'phone' => $from,
+                        'role' => 'assistant',
+                        'content' => $body,
+                        'timestamp' => now()
+                    ]);
+                    broadcast(new \App\Events\MessageReceived($chat));
+                }
             }
             return response()->json(['status' => 'saved'], 200);
         }

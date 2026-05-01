@@ -57,6 +57,7 @@ class User extends Authenticatable implements FilamentUser
         'plan_type',
         'private_phone',
         'low_balance_notified_at',
+        'suspended_notified_at',
     ];
 
     /**
@@ -82,6 +83,7 @@ class User extends Authenticatable implements FilamentUser
         'has_claimed_autoreply_bonus' => 'boolean',
         'whatsapp_connected_at'    => 'datetime',
         'low_balance_notified_at'  => 'datetime',
+        'suspended_notified_at'    => 'datetime',
     ];
 
     public function orders()

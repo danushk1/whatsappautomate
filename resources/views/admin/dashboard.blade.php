@@ -109,6 +109,26 @@
                         </button>
                     </div>
                 </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                            Low Balance Message <span class="text-amber-500/70 font-normal normal-case">(sent when balance ≤ 10)</span>
+                        </label>
+                        <textarea name="low_balance_message" rows="4"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-amber-500 outline-none transition text-sm placeholder-slate-600 resize-none"
+                            placeholder="⚠️ ඔබේ balance Rs.X ක් ඉතිරියි. Top up karanna: Bank details...">{{ $setting->low_balance_message }}</textarea>
+                        <p class="text-[10px] text-slate-600 mt-1">Leave empty to use default. Bank details auto-appended if set above.</p>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">
+                            Suspended Message <span class="text-red-500/70 font-normal normal-case">(sent when balance ≤ 5)</span>
+                        </label>
+                        <textarea name="suspended_message" rows="4"
+                            class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white focus:ring-1 focus:ring-red-500 outline-none transition text-sm placeholder-slate-600 resize-none"
+                            placeholder="⚠️ ඔබේ service close වී ඇත. Reactivate karanna: Bank details...">{{ $setting->suspended_message }}</textarea>
+                        <p class="text-[10px] text-slate-600 mt-1">Leave empty to use default. Must start with ⚠️ to avoid saving to chat history.</p>
+                    </div>
+                </div>
             </form>
         </div>
 

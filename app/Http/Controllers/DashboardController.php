@@ -49,6 +49,7 @@ class DashboardController extends Controller
             'name' => 'required|string|max:255',
             'address' => 'nullable|string',
             'whatsapp_number' => 'nullable|string',
+            'private_phone' => 'nullable|string|max:20',
             'target_value' => 'nullable|string',
             'google_sheet_name' => 'nullable|string',
             'order_api_url' => 'nullable|string',
@@ -60,12 +61,21 @@ class DashboardController extends Controller
         ]);
 
         $user = Auth::user();
+
+        // Prevent saving the same number as both primary and secondary
+        $primaryClean   = preg_replace('/[^0-9]/', '', $request->whatsapp_number ?? '');
+        $secondaryClean = preg_replace('/[^0-9]/', '', $request->private_phone ?? '');
+        if ($secondaryClean && $primaryClean && $secondaryClean === $primaryClean) {
+            return back()->withErrors(['private_phone' => 'Secondary number must be different from the primary WhatsApp number.'])->withInput();
+        }
+
         $isAutoreplyEnabled = $request->has('is_autoreply_enabled');
 
         $updateData = [
             'name' => $request->name,
             'address' => $request->address,
             'whatsapp_number' => $request->whatsapp_number,
+            'private_phone' => $request->private_phone ?: null,
             'target_value' => $request->target_value,
             'google_sheet_name' => $request->google_sheet_name,
             'order_api_url' => $request->order_api_url,

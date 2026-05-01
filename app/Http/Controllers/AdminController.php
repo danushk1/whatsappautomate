@@ -109,11 +109,13 @@ class AdminController extends Controller
     public function saveSettings(Request $request)
     {
         $request->validate([
-            'admin_whatsapp'    => 'nullable|string|max:20',
-            'bank_name'         => 'nullable|string|max:100',
-            'bank_account_no'   => 'nullable|string|max:50',
-            'bank_account_name' => 'nullable|string|max:100',
-            'bank_branch'       => 'nullable|string|max:100',
+            'admin_whatsapp'      => 'nullable|string|max:20',
+            'bank_name'           => 'nullable|string|max:100',
+            'bank_account_no'     => 'nullable|string|max:50',
+            'bank_account_name'   => 'nullable|string|max:100',
+            'bank_branch'         => 'nullable|string|max:100',
+            'low_balance_message' => 'nullable|string|max:1000',
+            'suspended_message'   => 'nullable|string|max:1000',
         ]);
 
         AdminSetting::updateOrCreate(['id' => 1], $request->only([
@@ -122,6 +124,8 @@ class AdminController extends Controller
             'bank_account_no',
             'bank_account_name',
             'bank_branch',
+            'low_balance_message',
+            'suspended_message',
         ]));
 
         return back()->with('success', 'Settings saved successfully.');

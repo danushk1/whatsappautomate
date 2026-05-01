@@ -280,6 +280,18 @@
                                     placeholder="Enter your company address">
                             </div>
                             <div>
+                                <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                    Second WhatsApp Number
+                                    <span class="text-slate-600 font-normal normal-case ml-1">(optional — for low balance alerts)</span>
+                                </label>
+                                <input type="text" name="private_phone" value="{{ old('private_phone', $user->private_phone) }}"
+                                    class="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none transition-all placeholder-slate-600"
+                                    placeholder="94771234567 (must differ from primary)">
+                                @error('private_phone')
+                                    <p class="text-red-400 text-xs mt-2">{{ $message }}</p>
+                                @enderror
+                            </div>
+                            <div>
                                 <label class="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-3">Company Information / Description <span class="text-red-400">*</span></label>
                                 <textarea name="company_details" rows="6" required
                                     class="w-full bg-slate-900/50 border border-slate-800 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none transition-all placeholder-slate-600"

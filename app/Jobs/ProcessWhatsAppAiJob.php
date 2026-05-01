@@ -874,35 +874,55 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     {
         $user = $this->user->fresh();
 
-        if ($user->balance > 10 || $user->balance <= 0) return;
-        if (!$user->private_phone) return;
+        if ($user->balance <= 0) return;
 
-        // Only notify once per 24 hours
-        if ($user->low_balance_notified_at && $user->low_balance_notified_at->gt(now()->subHours(24))) return;
+        // Use private_phone if set, otherwise fall back to whatsapp_number
+        $notifyPhone = $user->private_phone ?: $user->whatsapp_number;
+        if (!$notifyPhone) return;
 
-        $setting = \App\Models\AdminSetting::first();
+        $setting  = \App\Models\AdminSetting::first();
         $bankLine = $setting
             ? "Bank: {$setting->bank_name}\nAcc No: {$setting->bank_account_no}\nName: {$setting->bank_account_name}\nBranch: {$setting->bank_branch}"
-            : 'Please contact admin to top up.';
+            : 'Contact admin to top up.';
 
-        $message = "⚠️ ඔබේ balance Rs." . number_format($user->balance, 2) . " ක් ඉතිරියි.\n\nTop up karanna:\n{$bankLine}";
+        if ($user->balance <= 5) {
+            // Suspended alert — send once per 24h (separate debounce)
+            if ($user->suspended_notified_at && $user->suspended_notified_at->gt(now()->subHours(24))) return;
 
+            $body = $setting?->suspended_message
+                ?: "⚠️ ඔබේ account balance Rs." . number_format($user->balance, 2) . " දක්වා පහළ ගොස් service close වී ඇත.\n\nReactivate karanna:\n{$bankLine}";
+
+            $this->sendNotification($user->id, $notifyPhone, $body);
+            $user->suspended_notified_at = now();
+            $user->save();
+
+        } elseif ($user->balance <= 10) {
+            // Low balance warning — send once per 24h
+            if ($user->low_balance_notified_at && $user->low_balance_notified_at->gt(now()->subHours(24))) return;
+
+            $body = $setting?->low_balance_message
+                ?: "⚠️ ඔබේ balance Rs." . number_format($user->balance, 2) . " ක් ඉතිරියි. ඉක්මනින් top up karanna:\n{$bankLine}";
+
+            $this->sendNotification($user->id, $notifyPhone, $body);
+            $user->low_balance_notified_at = now();
+            $user->save();
+        }
+    }
+
+    private function sendNotification(int $userId, string $phone, string $message): void
+    {
         try {
             Http::withHeaders([
                 'x-api-key'    => config('services.node_bridge.secret_key'),
                 'Content-Type' => 'application/json',
             ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
-                'user_id' => $user->id,
-                'phone'   => $user->private_phone,
+                'user_id' => $userId,
+                'phone'   => $phone,
                 'message' => $message,
             ]);
-
-            $user->low_balance_notified_at = now();
-            $user->save();
-
-            Log::info("Low balance notification sent to user {$user->id}");
+            Log::info("Balance notification sent to user {$userId} → {$phone}");
         } catch (\Throwable $e) {
-            Log::error("Low balance notification failed: " . $e->getMessage());
+            Log::error("Balance notification failed for user {$userId}: " . $e->getMessage());
         }
     }
 }

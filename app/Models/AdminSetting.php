@@ -12,5 +12,7 @@ class AdminSetting extends Model
         'bank_account_no',
         'bank_account_name',
         'bank_branch',
+        'low_balance_message',
+        'suspended_message',
     ];
 }
