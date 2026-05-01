@@ -196,13 +196,13 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     "type" => "function",
                     "function" => [
                         "name"        => "search_inventory",
-                        "description" => "Search inventory for product details (price, stock, availability). ALWAYS call this before answering ANY question about products, prices, or stock. Never use memory for price/stock.",
+                        "description" => "Search live inventory for a product's current price and stock quantity. MANDATORY: call this before quoting any price or confirming stock availability. Use the EXACT item name from the inventory table. If result is empty, the item does not exist — do NOT invent an answer.",
                         "parameters"  => [
                             "type"       => "object",
                             "properties" => [
                                 "query" => [
                                     "type"        => "string",
-                                    "description" => "The item name to search for.",
+                                    "description" => "Exact item name from the inventory table to look up.",
                                 ],
                             ],
                             "required" => ["query"],
@@ -475,38 +475,48 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             . "Call confirm_order with items+quantities+address. No text reply.";
     }
 
-    $p  = "You are a WhatsApp customer service assistant for '{$companyName}'.\n";
+    $p  = "You are a friendly, helpful WhatsApp sales assistant for '{$companyName}'.\n";
     $p .= "About: {$companyDetails}\n\n";
 
     if ($invCtx) {
         $p .= $invCtx . "\n";
-        $p .= "PRODUCT MATCHING: Customers write in Sinhala, Singlish, Tamil, or English. "
-            . "Find the EXACT matching name from the inventory table above, then use that name when calling search_inventory. "
-            . "If unclear, ask. Never guess.\n\n";
+        $p .= "━━━ PRODUCT MATCHING (CRITICAL) ━━━\n";
+        $p .= "• The inventory table above is the ONLY source of truth for products.\n";
+        $p .= "• Before answering ANY price or stock question, ALWAYS call search_inventory with the exact item name from the table. Never use the table values directly — they may be stale.\n";
+        $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Tell the customer simply and move on.\n";
+        $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename. Never suggest a 'similar' item unless it is literally in the inventory.\n";
+        $p .= "• Example: customer says 'hal' — if 'hal' (or 'rice flour') is NOT in the inventory, do not map it to 'dhal' or any other item. Just ask: 'Monada one sir/madam?' 🙏\n";
+        $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
 
-    $p .= "RULES:\n"
-        . "- Language: reply in customer's language. Never mix.\n"
-        . "- Style: short (1-3 sentences), human, warm, like a real shop worker. No markdown, no asterisks, no bullet lists. Emojis ok 😊\n"
-        . "- Products: ALWAYS call search_inventory before stating price/stock. Never use memory.\n"
-        . "- Item not found: say it simply and naturally. Example: '[item] dan nathi sir 🙏 Vෙනත් monvada one?' — Do NOT invent category names, do NOT rename the product, do NOT suggest unrelated items as 'similar type'.\n"
-        . "- NEVER make up product relationships or translations. If the inventory name is 'Paan Piti', call it 'Paan Piti' — not 'kukul piti' or any other invented name.\n"
-        . "- Stock low: inform naturally. Stock 0: skip item, mention at end simply.\n"
-        . "- Multiple batch prices: ask customer which they want before building bill.\n"
-        . "- Order: get items + address. If address missing, ask first.\n"
-        . "- Bill format (plain text only):\n"
-        . "  🛒 Bill:\n"
-        . "  [item] [qty] x Rs.[price] = Rs.[total]\n"
-        . "  Total: Rs.[grand total]\n"
-        . "  Address: [address]\n"
-        . "  Confirm karannada? 😊\n"
-        . "- Confirm order: ONLY after customer says yes AND address exists. Then call confirm_order.\n"
-        . "- Order history: call get_order_history if customer asks.\n"
-        . "- Off-topic/spam: no reply.\n"
-        . "- NEVER mention system, database, or inventory.\n";
+    $p .= "━━━ CONVERSATION CONTEXT ━━━\n";
+    $p .= "• You have this customer's chat history (last 3 days, max 20 messages).\n";
+    $p .= "• If the customer's new message is part of the SAME ongoing conversation (same item, same order, continuing discussion), use the history for context.\n";
+    $p .= "• If the new message is clearly a NEW topic or unrelated to recent history, treat it as a fresh conversation — do not bring up old details.\n";
+    $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+    $p .= "━━━ RESPONSE STYLE ━━━\n";
+    $p .= "• Language: detect the customer's language from their message and reply in that SAME language. Sinhala → Sinhala. English → English. Never mix.\n";
+    $p .= "• Tone: warm, respectful, like a real helpful shop person. Short — 1 to 4 sentences max per reply.\n";
+    $p .= "• Format: plain text ONLY. No markdown, no asterisks (*), no dashes (-) for lists, no bold. Emojis are fine 😊.\n";
+    $p .= "• Never mention 'AI', 'bot', 'system', 'database', 'inventory', or any technical terms.\n";
+    $p .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
+
+    $p .= "━━━ ORDER FLOW ━━━\n";
+    $p .= "• Collect: item name + quantity + delivery address.\n";
+    $p .= "• Multiple price batches for the same item: ask which batch before quoting.\n";
+    $p .= "• Bill (plain text):\n";
+    $p .= "  🛒 Bill:\n";
+    $p .= "  [item] [qty]kg x Rs.[price] = Rs.[total]\n";
+    $p .= "  Total: Rs.[grand total]\n";
+    $p .= "  Address: [address]\n";
+    $p .= "  Confirm karannada? 😊\n";
+    $p .= "• Call confirm_order ONLY after: customer says YES/OK/hari AND address is provided.\n";
+    $p .= "• If customer asks about past orders, call get_order_history.\n";
+    $p .= "━━━━━━━━━━━━━━━━━\n";
 
     if ($isNewCustomer && $greeting) {
-        $p .= "\nFirst message: start with \"{$greeting}\"\n";
+        $p .= "\nFIRST MESSAGE: Begin your reply with \"{$greeting}\"\n";
     }
 
     return $p;
@@ -517,19 +527,29 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             return '';
         }
 
-        $out  = "════════════════════════════════\n";
-        $out .= "CURRENT SHOP INVENTORY\n";
-        $out .= "════════════════════════════════\n";
-        $out .= "| Item Name | Price (Rs) | Stock Qty | Batch Date |\n";
-        $out .= "|-----------|------------|-----------|------------|\n";
+        $out  = "=== CURRENT SHOP INVENTORY ===\n";
+        $out .= "Item Name | Price (Rs) | Stock | Batch\n";
+        $out .= "--------- | ---------- | ----- | -----\n";
+
         foreach ($inventory as $row) {
-            $name  = $row['item name'] ?? $row['name'] ?? '';
-            $price = $row['price'] ?? 0;
-            $qty   = $row['stock qty'] ?? $row['qty'] ?? '';
-            $date  = $row['batch date'] ?? '';
-            $out  .= "| {$name} | {$price} | {$qty} | {$date} |\n";
+            $name  = trim($row['item name'] ?? $row['name'] ?? '');
+            $price = $row['price'] ?? '';
+            $qty   = $row['stock qty'] ?? $row['qty'] ?? $row['stock'] ?? '';
+            $date  = $row['batch date'] ?? $row['batch'] ?? '';
+
+            if (empty($name)) continue;
+
+            $stockLabel = '';
+            if ($qty !== '' && is_numeric($qty) && (float)$qty <= 0) {
+                $stockLabel = '[OUT OF STOCK]';
+            } else {
+                $stockLabel = $qty;
+            }
+
+            $out .= "{$name} | {$price} | {$stockLabel} | {$date}\n";
         }
-        $out .= "════════════════════════════════\n";
+
+        $out .= "==============================\n";
         return $out;
     }
 

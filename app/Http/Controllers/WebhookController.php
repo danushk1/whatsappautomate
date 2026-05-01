@@ -153,6 +153,7 @@ class WebhookController extends Controller
         ];
 
         $formattedMsg = $formattedPayload['entry'][0]['changes'][0]['value']['messages'][0];
+        $formattedMsg['real_phone'] = $from; // preserve original for job-side normalization
 
         try {
             ProcessWhatsAppAiJob::dispatch($formattedPayload, $formattedMsg, $user);
