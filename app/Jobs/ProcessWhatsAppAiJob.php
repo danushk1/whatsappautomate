@@ -947,17 +947,33 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             $notifyPhone = $this->user->private_phone;
             if (!$notifyPhone) return;
 
-            // Normalize to international format (0775... → 94775...)
+            // Normalize owner number: 077... → 9477...
             $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
             if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
                 $notifyPhone = '94' . substr($notifyPhone, 1);
             }
 
+            // Clean customer phone to digits only
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
             $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
 
-            $msg = "📞 Customer wants assistance\n"
-                . "📱 {$cleanPhone}\n"
+            // Reformat as readable: 94771234567 → 0771234567
+            $displayPhone = $cleanPhone;
+            if (str_starts_with($cleanPhone, '94') && strlen($cleanPhone) === 11) {
+                $displayPhone = '0' . substr($cleanPhone, 2);
+            }
+
+            // Look up contact name
+            $contact = \App\Models\Contact::where('user_id', $this->user->id)
+                ->where('phone', $cleanPhone)
+                ->first();
+            $customerName = $contact?->name ?? $contact?->phone ?? null;
+
+            $nameLine = $customerName ? "👤 {$customerName}\n" : '';
+
+            $msg = "📞 Customer needs help\n"
+                . $nameLine
+                . "📱 {$displayPhone}\n"
                 . "❓ {$reason}";
 
             Http::withHeaders([
