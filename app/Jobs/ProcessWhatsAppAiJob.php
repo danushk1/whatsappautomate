@@ -258,9 +258,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             $aiMsg      = $result->json('choices.0.message') ?? [];
             $totalTokens = $result->json('usage.total_tokens') ?? 0;
 
-            $toolCalls      = $aiMsg['tool_calls'] ?? null;
-            $finalReply     = $aiMsg['content'] ?? '';
-            $extractedOrder = null;
+            $toolCalls       = $aiMsg['tool_calls'] ?? null;
+            $finalReply      = $aiMsg['content'] ?? '';
+            $extractedOrder  = null;
+            $escalationCalled = false;
 
             if ($toolCalls && count($toolCalls) > 0) {
                 // Append assistant message with tool_calls
@@ -316,6 +317,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                         $args   = json_decode($toolCall['function']['arguments'], true);
                         $reason = $args['reason'] ?? 'Customer needs assistance';
                         $this->escalateToAdmin($phone, $reason);
+                        $escalationCalled = true;
 
                         $messages[] = [
                             'role'         => 'tool',
@@ -353,6 +355,24 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
             if ($isSilentExtraction) {
                 $finalReply = '';
+            }
+
+            // Safety net: AI sometimes writes "poddak inna" without calling escalate_to_admin tool.
+            // Detect Sinhala/English escalation phrases and trigger the function regardless.
+            if (!$escalationCalled && !empty($finalReply)) {
+                $lower = mb_strtolower($finalReply);
+                $escalationSignals = [
+                    'poddak inna', 'katha karai', 'katha karannam', 'katha karavi',
+                    'contact karai', 'reach you', 'get back to you', 'someone will contact',
+                    'team member', 'obata katha', 'ape kenek',
+                ];
+                foreach ($escalationSignals as $signal) {
+                    if (str_contains($lower, $signal)) {
+                        Log::info("ESCALATE_AUTODETECT: AI bypassed tool, triggering from reply phrase '{$signal}'");
+                        $this->escalateToAdmin($phone, 'Customer needs human help (auto-detected from reply)');
+                        break;
+                    }
+                }
             }
 
             // Send reply
@@ -945,15 +965,26 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     private function escalateToAdmin(string $customerPhone, string $reason): void
     {
         try {
-            $notifyPhone = $this->user->private_phone;
-            Log::info("ESCALATE: user={$this->user->id} private_phone=" . ($notifyPhone ?? 'NULL') . " reason={$reason}");
-            if (!$notifyPhone) return;
+            $user        = $this->user->fresh();
+            $notifyPhone = $user->private_phone;
+            $nodeBridgeUrl = config('services.node_bridge.url');
+            $apiKey        = config('services.node_bridge.secret_key');
+
+            Log::info("ESCALATE_START: user={$user->id} private_phone=" . ($notifyPhone ?? 'NULL')
+                . " node_url={$nodeBridgeUrl} reason={$reason}");
+
+            if (!$notifyPhone) {
+                Log::warning("ESCALATE_SKIP: private_phone not set for user {$user->id}");
+                return;
+            }
 
             // Normalize owner number: 077... → 9477...
             $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
             if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
                 $notifyPhone = '94' . substr($notifyPhone, 1);
             }
+
+            Log::info("ESCALATE_PHONE: normalized={$notifyPhone}");
 
             // Clean customer phone to digits only
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
@@ -965,12 +996,22 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 $displayPhone = '0' . substr($cleanPhone, 2);
             }
 
-            // Look up contact name — match by real phone or raw WhatsApp ID
-            $contact = \App\Models\Contact::where('user_id', $this->user->id)
-                ->where(function ($q) use ($cleanPhone) {
-                    $q->where('phone', $cleanPhone)->orWhere('wa_id', $cleanPhone);
+            // Look up contact — match by real phone, LID digits, or original wa_id
+            $contact = \App\Models\Contact::where('user_id', $user->id)
+                ->where(function ($q) use ($cleanPhone, $customerPhone) {
+                    $q->where('phone', $cleanPhone)
+                      ->orWhere('wa_id', $customerPhone)
+                      ->orWhere('wa_id', $cleanPhone);
                 })->first();
             $customerName = $contact?->name ?? null;
+
+            // Prefer the real resolved phone from contact record if available
+            if ($contact && $contact->phone && strlen($contact->phone) >= 10) {
+                $realContactPhone = $contact->phone;
+                $displayPhone = (str_starts_with($realContactPhone, '94') && strlen($realContactPhone) === 11)
+                    ? '0' . substr($realContactPhone, 2)
+                    : $realContactPhone;
+            }
 
             $nameLine = $customerName ? "👤 {$customerName}\n" : '';
 
@@ -979,18 +1020,26 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 . "📱 {$displayPhone}\n"
                 . "❓ {$reason}";
 
-            Http::withHeaders([
-                'x-api-key'    => config('services.node_bridge.secret_key'),
+            $response = Http::withHeaders([
+                'x-api-key'    => $apiKey,
                 'Content-Type' => 'application/json',
-            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
-                'user_id' => $this->user->id,
+            ])->timeout(15)->post("{$nodeBridgeUrl}/send-message", [
+                'user_id' => $user->id,
                 'phone'   => $notifyPhone,
                 'message' => $msg,
             ]);
 
-            Log::info("Escalation sent to {$notifyPhone} for customer {$cleanPhone}: {$reason}");
+            if ($response->successful()) {
+                Log::info("ESCALATE_OK: sent to {$notifyPhone} body=" . $response->body());
+            } else {
+                Log::error("ESCALATE_FAIL: status={$response->status()} body=" . $response->body()
+                    . " user_id={$user->id} to={$notifyPhone}");
+            }
         } catch (\Throwable $e) {
-            Log::error("Escalation failed: " . $e->getMessage());
+            Log::error("ESCALATE_EXCEPTION: " . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
         }
     }
 
