@@ -483,9 +483,11 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "━━━ PRODUCT MATCHING (CRITICAL) ━━━\n";
         $p .= "• The inventory table above is the ONLY source of truth for products.\n";
         $p .= "• Before answering ANY price or stock question, ALWAYS call search_inventory with the exact item name from the table. Never use the table values directly — they may be stale.\n";
-        $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Tell the customer simply and move on.\n";
-        $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename. Never suggest a 'similar' item unless it is literally in the inventory.\n";
-        $p .= "• Example: customer says 'hal' — if 'hal' (or 'rice flour') is NOT in the inventory, do not map it to 'dhal' or any other item. Just ask: 'Monada one sir/madam?' 🙏\n";
+        $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Smoothly redirect to what IS available.\n";
+        $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): do NOT just say 'nathi'. Instead, naturally mention 2–3 IN-STOCK items the shop does have. Respond like a helpful shopkeeper — e.g. if customer asks for 'hal' and hal is not in inventory: 'Hal nm api langa nathi, api langa Dan Dhal, Paan Piti, Coconut Oil thiyenava 😊 Monada one?' — pick real items from the table above.\n";
+        $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
+        $p .= "• STOCK QUANTITY — NEVER reveal stock numbers to the customer. Never say 'we have 50kg left' or 'stock 20 units'. Stock is internal info only. If customer asks 'can I get 10kg?' — just confirm yes or no based on whether stock covers it, without mentioning the actual quantity.\n";
+        $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
     }
 
@@ -515,8 +517,12 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "• If customer asks about past orders, call get_order_history.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n";
 
-    if ($isNewCustomer && $greeting) {
-        $p .= "\nFIRST MESSAGE: Begin your reply with \"{$greeting}\"\n";
+    if ($isNewCustomer) {
+        if ($greeting) {
+            $p .= "\nFIRST MESSAGE: This is the customer's very first message. Begin your reply with: \"{$greeting}\" — then answer their question.\n";
+        } else {
+            $p .= "\nFIRST MESSAGE: This is the customer's very first message. Start with a short warm welcome that naturally includes the shop name '{$companyName}' and invites them to share what they need. Write it like a real person would greet a new WhatsApp customer — one or two sentences, friendly, in the customer's language. Then answer their question.\n";
+        }
     }
 
     return $p;
