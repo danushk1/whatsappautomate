@@ -464,12 +464,18 @@ app.post('/send-message', async (req, res) => {
             console.log(`[${user_id}] Resolved ${phone} → ${actualPhone}`);
         }
 
-        // Build chatId: if @lid and no cache resolution, keep @lid (WhatsApp requires it for LID contacts)
+        // Build chatId: use getNumberId for plain numbers so LID contacts resolve correctly
         let chatId;
         if (actualPhone.includes('@')) {
             chatId = actualPhone; // already has domain (@c.us, @lid, @g.us etc.)
         } else {
-            chatId = `${actualPhone}@c.us`;
+            try {
+                const numId = await clientData.client.getNumberId(actualPhone);
+                chatId = numId ? numId._serialized : `${actualPhone}@c.us`;
+                console.log(`[${user_id}] getNumberId(${actualPhone}) → ${chatId}`);
+            } catch (_) {
+                chatId = `${actualPhone}@c.us`;
+            }
         }
 
         const sendMsg = async (id) => {

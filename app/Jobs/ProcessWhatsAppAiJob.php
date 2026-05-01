@@ -375,15 +375,15 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 }
             }
 
-            // Send reply
+            // Send reply — save BEFORE sending so from_me event dedup finds it already saved
             if (!empty($finalReply)) {
+                $this->saveChatHistory($phone, 'assistant', $finalReply);
                 $this->sendWhatsApp(
                     $phone,
                     $this->user->target_api_key,
                     $this->payload['entry'][0]['changes'][0]['value']['metadata']['phone_number_id'] ?? null,
                     $finalReply
                 );
-                $this->saveChatHistory($phone, 'assistant', $finalReply);
 
                 // Deduct AI token cost from LKR balance
                 if ($this->user->is_autoreply_enabled) {
