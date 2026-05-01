@@ -947,6 +947,12 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             $notifyPhone = $this->user->private_phone;
             if (!$notifyPhone) return;
 
+            // Normalize to international format (0775... → 94775...)
+            $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
+            if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
+                $notifyPhone = '94' . substr($notifyPhone, 1);
+            }
+
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
             $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
 
@@ -978,6 +984,12 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         // Target: user's private_phone → fallback to whatsapp_number
         $notifyPhone = $user->private_phone ?: $user->whatsapp_number;
         if (!$notifyPhone) return;
+
+        // Normalize 077... → 9477...
+        $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
+        if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
+            $notifyPhone = '94' . substr($notifyPhone, 1);
+        }
 
         // Sender: admin's connected WhatsApp (admin must scan QR via /whatsapp/connect)
         $admin = \App\Models\User::where('is_admin', true)->first();

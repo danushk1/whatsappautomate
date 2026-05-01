@@ -75,6 +75,12 @@ class ProcessBulkMessageJob implements ShouldQueue
         $notifyPhone = $user->private_phone ?: $user->whatsapp_number;
         if (!$notifyPhone) return;
 
+        // Normalize 077... → 9477...
+        $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
+        if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
+            $notifyPhone = '94' . substr($notifyPhone, 1);
+        }
+
         $admin = \App\Models\User::where('is_admin', true)->first();
         if (!$admin) return;
 
