@@ -29,6 +29,10 @@ Route::post('/whatsapp/webhook', [WebhookController::class, 'processIncomingWebh
 Route::post('/whatsapp/webhook/automation', [WebhookController::class, 'processAutomationWebhook'])
     ->middleware('node.bridge.auth');
 
+// Resolve real phone number from WhatsApp contact (fixes LID format contacts)
+Route::post('/whatsapp/resolve-contact', [WebhookController::class, 'resolveContact'])
+    ->middleware('node.bridge.auth');
+
 // Node Bridge Management (QR, Session, Status)
 Route::prefix('node-bridge')->middleware('node.bridge.auth')->group(function () {
     Route::post('/send-message', [NodeBridgeController::class, 'sendMessage']);

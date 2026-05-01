@@ -616,17 +616,18 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             'timestamp'    => now(),
         ]);
 
-        // Save to Contacts for Bulk Broadcasting (normalize to clean international format)
+        // Save to Contacts — phone = clean digits, wa_id = raw WhatsApp chat ID
         $rawPhone  = $this->msg['real_phone'] ?? $phone;
-        $realPhone = preg_replace('/@.*$/', '', $rawPhone);       // strip @c.us / @g.us
-        $realPhone = preg_replace('/[^0-9]/', '', $realPhone);    // digits only
+        $waId      = $rawPhone;                                    // full raw e.g. "94771234567@c.us"
+        $realPhone = preg_replace('/@.*$/', '', $rawPhone);        // strip @c.us / @lid
+        $realPhone = preg_replace('/[^0-9]/', '', $realPhone);     // digits only
         if (strlen($realPhone) === 10 && str_starts_with($realPhone, '0')) {
-            $realPhone = '94' . substr($realPhone, 1);            // 07X → 94X
+            $realPhone = '94' . substr($realPhone, 1);             // 07X → 94X
         }
         if (strlen($realPhone) >= 10 && strlen($realPhone) <= 15) {
             \App\Models\Contact::updateOrCreate(
                 ['user_id' => $this->user->id, 'phone' => $realPhone],
-                ['last_messaged_at' => now(), 'updated_at' => now()]
+                ['wa_id' => $waId, 'last_messaged_at' => now(), 'updated_at' => now()]
             );
         }
 
@@ -963,11 +964,12 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 $displayPhone = '0' . substr($cleanPhone, 2);
             }
 
-            // Look up contact name
+            // Look up contact name — match by real phone or raw WhatsApp ID
             $contact = \App\Models\Contact::where('user_id', $this->user->id)
-                ->where('phone', $cleanPhone)
-                ->first();
-            $customerName = $contact?->name ?? $contact?->phone ?? null;
+                ->where(function ($q) use ($cleanPhone) {
+                    $q->where('phone', $cleanPhone)->orWhere('wa_id', $cleanPhone);
+                })->first();
+            $customerName = $contact?->name ?? null;
 
             $nameLine = $customerName ? "👤 {$customerName}\n" : '';
 

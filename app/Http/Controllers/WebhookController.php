@@ -153,7 +153,7 @@ class WebhookController extends Controller
         ];
 
         $formattedMsg = $formattedPayload['entry'][0]['changes'][0]['value']['messages'][0];
-        $formattedMsg['real_phone'] = $from; // preserve original for job-side normalization
+        $formattedMsg['real_phone'] = $payload['real_phone'] ?? $from;
 
         try {
             ProcessWhatsAppAiJob::dispatch($formattedPayload, $formattedMsg, $user);
@@ -180,6 +180,35 @@ class WebhookController extends Controller
         }
 
         return response('Invalid token', 403);
+    }
+
+    /**
+     * Resolve real phone number from WhatsApp contact.getContact()
+     * Called by Node.js bridge to fix LID-format contacts.
+     */
+    public function resolveContact(Request $request)
+    {
+        $userId    = $request->input('user_id');
+        $waId      = $request->input('wa_id');
+        $realPhone = preg_replace('/[^0-9]/', '', $request->input('real_phone', ''));
+
+        if (!$userId || !$realPhone) {
+            return response()->json(['status' => 'skip']);
+        }
+
+        if (strlen($realPhone) === 10 && str_starts_with($realPhone, '0')) {
+            $realPhone = '94' . substr($realPhone, 1);
+        }
+
+        $rawId = preg_replace('/[^0-9]/', '', $waId ?? '');
+
+        \App\Models\Contact::where('user_id', $userId)
+            ->where(function ($q) use ($waId, $rawId) {
+                $q->where('wa_id', $waId)->orWhere('phone', $rawId);
+            })
+            ->update(['phone' => $realPhone]);
+
+        return response()->json(['status' => 'ok']);
     }
 
     /**
