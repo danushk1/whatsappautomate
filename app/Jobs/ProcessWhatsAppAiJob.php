@@ -944,27 +944,26 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     private function escalateToAdmin(string $customerPhone, string $reason): void
     {
         try {
-            $admin = \App\Models\User::where('is_admin', true)->first();
-            if (!$admin || !$admin->private_phone) return;
+            $notifyPhone = $this->user->private_phone;
+            if (!$notifyPhone) return;
 
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
             $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
 
-            $adminMsg = "📞 Customer Escalation\n"
-                . "Client: {$this->user->name}\n"
-                . "📱 Customer: {$cleanPhone}\n"
+            $msg = "📞 Customer wants assistance\n"
+                . "📱 {$cleanPhone}\n"
                 . "❓ {$reason}";
 
             Http::withHeaders([
                 'x-api-key'    => config('services.node_bridge.secret_key'),
                 'Content-Type' => 'application/json',
             ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
-                'user_id' => $admin->id,
-                'phone'   => $admin->private_phone,
-                'message' => $adminMsg,
+                'user_id' => $this->user->id,
+                'phone'   => $notifyPhone,
+                'message' => $msg,
             ]);
 
-            Log::info("Escalation sent to admin private_phone for {$customerPhone}: {$reason}");
+            Log::info("Escalation sent to {$notifyPhone} for customer {$cleanPhone}: {$reason}");
         } catch (\Throwable $e) {
             Log::error("Escalation failed: " . $e->getMessage());
         }

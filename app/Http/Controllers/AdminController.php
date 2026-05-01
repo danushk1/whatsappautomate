@@ -6,6 +6,7 @@ use App\Models\AdminMessage;
 use App\Models\AdminSetting;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class AdminController extends Controller
 {
@@ -16,12 +17,9 @@ class AdminController extends Controller
     {
         $users     = User::where('is_admin', false)->orderBy('created_at', 'DESC')->get();
         $setting   = AdminSetting::first() ?? new AdminSetting();
-        $messages  = AdminMessage::where('expires_at', '>', now())
-            ->orderBy('received_at', 'desc')
-            ->get();
         /** @var User $adminUser */
-        $adminUser = User::find(auth()->id());
-        return view('admin.dashboard', compact('users', 'setting', 'messages', 'adminUser'));
+        $adminUser = Auth::user();
+        return view('admin.dashboard', compact('users', 'setting', 'adminUser'));
     }
 
     /**
