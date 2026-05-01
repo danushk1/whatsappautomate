@@ -530,8 +530,11 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
     $p .= "━━━ RESPONSE STYLE ━━━\n";
     $p .= "• Language: detect the customer's language from their message and reply in that SAME language. Sinhala → Sinhala. English → English. Never mix.\n";
-    $p .= "• Tone: warm, respectful, like a real helpful shop person. Short — 1 to 4 sentences max per reply.\n";
-    $p .= "• Format: plain text ONLY. No markdown, no asterisks (*), no dashes (-) for lists, no bold. Emojis are fine 😊.\n";
+    $p .= "• Tone: warm, natural, like a real Sri Lankan shopkeeper chatting on WhatsApp. Sound like a person — not a form or a script.\n";
+    $p .= "• Length: 1 to 3 sentences max. Short and conversational. Never write a paragraph.\n";
+    $p .= "• Format: plain text ONLY. No markdown, no asterisks (*), no dashes (-) for lists, no bold. Emojis are fine 😊 but don't overuse them.\n";
+    $p .= "• Vary your replies — don't always start with 'Ow' or use the same sentence structure every time. Sound natural and alive.\n";
+    $p .= "• When confirming a product is available: weave the price naturally into the reply. e.g. 'Paan Piti thiyenava 😊 Rs. 260 ge. Kopamana one?' or 'Ow, Rs. 260 ge thiyenava — kite gannada?' — not a stiff list.\n";
     $p .= "• Never mention 'AI', 'bot', 'system', 'database', 'inventory', or any technical terms.\n";
     $p .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
 
@@ -941,41 +944,27 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     private function escalateToAdmin(string $customerPhone, string $reason): void
     {
         try {
-            $admin   = \App\Models\User::where('is_admin', true)->first();
-            $setting = \App\Models\AdminSetting::first();
-
-            if (!$admin) return;
+            $admin = \App\Models\User::where('is_admin', true)->first();
+            if (!$admin || !$admin->private_phone) return;
 
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
             $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
 
             $adminMsg = "📞 Customer Escalation\n"
-                . "📱 Number: {$cleanPhone}\n"
-                . "❓ Reason: {$reason}";
+                . "Client: {$this->user->name}\n"
+                . "📱 Customer: {$cleanPhone}\n"
+                . "❓ {$reason}";
 
-            // Send to admin's personal WhatsApp if configured
-            if ($setting?->admin_whatsapp) {
-                Http::withHeaders([
-                    'x-api-key'    => config('services.node_bridge.secret_key'),
-                    'Content-Type' => 'application/json',
-                ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
-                    'user_id' => $admin->id,
-                    'phone'   => $setting->admin_whatsapp,
-                    'message' => $adminMsg,
-                ]);
-            }
-
-            // Save to admin inbox
-            \App\Models\AdminMessage::create([
-                'from_number' => $cleanPhone,
-                'user_id'     => null,
-                'message'     => "📞 {$reason}",
-                'is_read'     => false,
-                'received_at' => now(),
-                'expires_at'  => now()->addDays(7),
+            Http::withHeaders([
+                'x-api-key'    => config('services.node_bridge.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                'user_id' => $admin->id,
+                'phone'   => $admin->private_phone,
+                'message' => $adminMsg,
             ]);
 
-            Log::info("Escalation sent to admin for {$customerPhone}: {$reason}");
+            Log::info("Escalation sent to admin private_phone for {$customerPhone}: {$reason}");
         } catch (\Throwable $e) {
             Log::error("Escalation failed: " . $e->getMessage());
         }

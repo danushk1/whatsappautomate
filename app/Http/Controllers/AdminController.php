@@ -19,7 +19,8 @@ class AdminController extends Controller
         $messages  = AdminMessage::where('expires_at', '>', now())
             ->orderBy('received_at', 'desc')
             ->get();
-        $adminUser = auth()->user(); // admin's own WhatsApp connection status
+        /** @var User $adminUser */
+        $adminUser = User::find(auth()->id());
         return view('admin.dashboard', compact('users', 'setting', 'messages', 'adminUser'));
     }
 
@@ -65,7 +66,7 @@ class AdminController extends Controller
         return back()->with('success', 'New client created successfully.');
     }
 
-    public function updateUser(Request $request, $id)
+    public function updateUser(Request $request, int $id)
     {
         $user = User::findOrFail($id);
         
@@ -136,16 +137,19 @@ class AdminController extends Controller
         return back()->with('success', 'Settings saved successfully.');
     }
 
-    public function markMessageRead($id)
+    public function markMessageRead(int $id)
     {
-        AdminMessage::where('id', $id)->update(['is_read' => true]);
+        AdminMessage::where('id', $id)->update([
+            'is_read'   => true,
+            'expires_at' => now()->addDay(),
+        ]);
         return response()->json(['status' => 'ok']);
     }
 
     /**
      * Delete a user.
      */
-    public function deleteUser($id)
+    public function deleteUser(int $id)
     {
         $user = User::findOrFail($id);
         if ($user->is_admin) {
