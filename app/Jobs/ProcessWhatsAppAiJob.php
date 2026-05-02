@@ -312,6 +312,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     } elseif ($toolCall['function']['name'] === 'confirm_order') {
                         $args           = json_decode($toolCall['function']['arguments'], true);
                         $extractedOrder = $args;
+                        $this->notifyNewOrder($phone, $args);
 
                         $messages[] = [
                             'role'         => 'tool',
@@ -344,7 +345,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                             'role'         => 'tool',
                             'tool_call_id' => $toolCall['id'],
                             'name'         => 'notify_stock_alert',
-                            'content'      => json_encode(['status' => 'notified', 'instruction' => 'Owner has been silently notified. Now tell the customer plainly about the stock situation — do NOT mention that anyone will contact them.']),
+                            'content'      => json_encode(['status' => 'logged', 'instruction' => 'Logged internally. Now ask the customer WHEN they need the quantity ("kawadata gannada sir?") and tell them warmly that our team member will contact them to arrange. Do NOT say how much stock is available.']),
                         ];
 
                     } elseif ($toolCall['function']['name'] === 'escalate_to_admin') {
@@ -571,7 +572,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
         $p .= "• ITEM NOT IN INVENTORY — If the item is simply not stocked: do NOT escalate and do NOT say 'ape kenek katha karai'. Just redirect naturally to what IS available. e.g. 'Hal nam dan api laga na sir 🙏 api langa Dan Dhal, Paan Piti thiyenava — mokakda one?'\n";
         $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
-        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent — do NOT reveal stock numbers to the customer). Then ask the customer WHEN they need it and say warmly that someone from the team will contact them to arrange. e.g. 'Oya tharam gannada sir kawadata? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊'. Do NOT tell the customer how much stock is available. Do NOT just say 'ganna baeri'.\n";
+        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent). Then your reply MUST do two things: (1) ask WHEN they need it, (2) say OUR PERSON WILL CONTACT THEM — never say 'contact us'. Exact format: '[Item] [qty]kg kawadata gannada sir? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊' — adapt naturally but keep this meaning. NEVER say 'sadaha apata ekka sambandha karanna'. NEVER reveal how much stock is available.\n";
         $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
         $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -996,7 +997,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         return null;
     }
 
-    private function notifyStockAlert(string $customerPhone, string $itemName, float $requestedQty, float $availableQty): void
+    private function notifyStockAlert(string $customerPhone, string $itemName, float $requestedQty, float $_availableQty = 0): void
     {
         try {
             $user        = $this->user->fresh();
@@ -1026,13 +1027,13 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 $displayPhone = '0' . substr($cleanPhone, 2);
             }
 
-            $nameLine    = $contact?->name ? "👤 {$contact->name}\n" : '';
-            $stockStatus = $availableQty > 0 ? "Available: {$availableQty}kg" : "Out of stock";
+            $nameLine = $contact?->name ? "👤 {$contact->name}\n" : '';
 
-            $msg = "📦 Stock Alert\n"
+            $msg = "📦 Bulk Request\n"
                 . $nameLine
                 . "📱 {$displayPhone}\n"
-                . "🛒 {$itemName} — Requested: {$requestedQty}kg / {$stockStatus}";
+                . "🛒 {$itemName} — {$requestedQty}kg needed\n"
+                . "⚡ Contact to arrange manually";
 
             Http::withHeaders([
                 'x-api-key'    => config('services.node_bridge.secret_key'),
@@ -1043,9 +1044,71 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'message' => $msg,
             ]);
 
-            Log::info("STOCK_ALERT: {$itemName} req={$requestedQty} avail={$availableQty} customer={$displayPhone}");
+            Log::info("STOCK_ALERT: {$itemName} req={$requestedQty} customer={$displayPhone}");
         } catch (\Throwable $e) {
             Log::error("STOCK_ALERT_FAIL: " . $e->getMessage());
+        }
+    }
+
+    private function notifyNewOrder(string $customerPhone, array $orderData): void
+    {
+        try {
+            $user        = $this->user->fresh();
+            $notifyPhone = $user->private_phone;
+            if (!$notifyPhone) return;
+
+            $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
+            if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
+                $notifyPhone = '94' . substr($notifyPhone, 1);
+            }
+
+            $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
+            $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+
+            $contact = \App\Models\Contact::where('user_id', $user->id)
+                ->where(function ($q) use ($cleanPhone, $customerPhone) {
+                    $q->where('phone', $cleanPhone)
+                      ->orWhere('wa_id', $customerPhone)
+                      ->orWhere('wa_id', $cleanPhone);
+                })->first();
+
+            $displayPhone = $cleanPhone;
+            if ($contact && $contact->phone && strlen($contact->phone) >= 10) {
+                $p = $contact->phone;
+                $displayPhone = (str_starts_with($p, '94') && strlen($p) === 11) ? '0' . substr($p, 2) : $p;
+            } elseif (str_starts_with($cleanPhone, '94') && strlen($cleanPhone) === 11) {
+                $displayPhone = '0' . substr($cleanPhone, 2);
+            }
+
+            $nameLine  = $contact?->name ? "👤 {$contact->name}\n" : '';
+            $itemLines = '';
+            $total     = 0;
+            foreach ($orderData['items'] ?? [] as $item) {
+                $itemLines .= "• {$item['name']} {$item['quantity']}kg — Rs.{$item['total_price']}\n";
+                $total     += (float) ($item['total_price'] ?? 0);
+            }
+
+            $address = $orderData['address'] ?? 'N/A';
+
+            $msg = "📋 New Order!\n"
+                . $nameLine
+                . "📱 {$displayPhone}\n"
+                . $itemLines
+                . "💰 Total: Rs.{$total}\n"
+                . "📍 {$address}";
+
+            Http::withHeaders([
+                'x-api-key'    => config('services.node_bridge.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                'user_id' => $user->id,
+                'phone'   => $notifyPhone,
+                'message' => $msg,
+            ]);
+
+            Log::info("ORDER_NOTIFY: sent to {$notifyPhone} for {$displayPhone}");
+        } catch (\Throwable $e) {
+            Log::error("ORDER_NOTIFY_FAIL: " . $e->getMessage());
         }
     }
 

@@ -76,8 +76,8 @@ class WebhookController extends Controller
 
         // If the message was sent by the owner from their phone, just save it to chat history and stop.
         if (!empty($payload['from_me']) && $payload['from_me'] == true) {
-            // Skip bot-generated alerts: ⚠️ balance, 📞 escalation, 📦 stock notifications
-            if (!str_starts_with($body, '⚠️') && !str_starts_with($body, '📞') && !str_starts_with($body, '📦')) {
+            // Skip bot-generated alerts: ⚠️ balance, 📞 escalation, 📦 stock, 📋 order notifications
+            if (!str_starts_with($body, '⚠️') && !str_starts_with($body, '📞') && !str_starts_with($body, '📦') && !str_starts_with($body, '📋')) {
                 $user = User::find($userId);
                 if ($user && $body) {
                     // Deduplicate: job already saves bot replies — skip if same message saved in last 30s
