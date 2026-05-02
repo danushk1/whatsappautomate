@@ -636,9 +636,9 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             'timestamp'    => now(),
         ]);
 
-        // Save to Contacts — phone = clean digits, wa_id = raw WhatsApp chat ID
+        // Save to Contacts — wa_id = WhatsApp chat ID (@lid/@c.us), phone = real digits
+        $waId      = $phone;                                       // WhatsApp chat ID (e.g. "34445839093921@lid")
         $rawPhone  = $this->msg['real_phone'] ?? $phone;
-        $waId      = $rawPhone;                                    // full raw e.g. "94771234567@c.us"
         $realPhone = preg_replace('/@.*$/', '', $rawPhone);        // strip @c.us / @lid
         $realPhone = preg_replace('/[^0-9]/', '', $realPhone);     // digits only
         if (strlen($realPhone) === 10 && str_starts_with($realPhone, '0')) {
@@ -646,8 +646,8 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         }
         if (strlen($realPhone) >= 10 && strlen($realPhone) <= 15) {
             \App\Models\Contact::updateOrCreate(
-                ['user_id' => $this->user->id, 'phone' => $realPhone],
-                ['wa_id' => $waId, 'last_messaged_at' => now(), 'updated_at' => now()]
+                ['user_id' => $this->user->id, 'wa_id' => $waId],
+                ['phone' => $realPhone, 'last_messaged_at' => now(), 'updated_at' => now()]
             );
         }
 
