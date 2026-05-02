@@ -585,7 +585,8 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "• Length: 1 to 3 sentences max. Short and conversational. Never write a paragraph.\n";
     $p .= "• Format: plain text ONLY. No markdown, no asterisks (*), no dashes (-) for lists, no bold. Emojis are fine 😊 but don't overuse them.\n";
     $p .= "• Vary your replies — don't always start with 'Ow' or use the same sentence structure every time. Sound natural and alive.\n";
-    $p .= "• When confirming a product is available: weave the price naturally into the reply. e.g. 'Paan Piti thiyenava 😊 Rs. 260 ge. Kopamana one?' or 'Ow, Rs. 260 ge thiyenava — kite gannada?' — not a stiff list.\n";
+    $p .= "• When confirming a product is available and the customer has NOT stated a quantity yet: weave the price naturally and ask how many — e.g. 'Paan Piti thiyenava 😊 Rs. 260 ge. Kopamana one?' — not a stiff list.\n";
+    $p .= "• When the customer's message ALREADY includes a quantity (e.g. 'onion 50kg', '9k denna', 'Sugar 5kg one'): confirm the price and ask for the delivery address IMMEDIATELY — do NOT ask 'kopamana one?' or 'kite gannada?' — you already have item + quantity. e.g. 'Ow sir, Onion 50kg Rs. 150 ge denna puluwan 😊 Deliver address eka denna puluvanada?'\n";
     $p .= "• Never mention 'AI', 'bot', 'system', 'database', 'inventory', or any technical terms.\n";
     $p .= "━━━━━━━━━━━━━━━━━━━━━\n\n";
 
