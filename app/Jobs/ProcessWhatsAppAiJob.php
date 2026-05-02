@@ -224,14 +224,30 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 [
                     "type" => "function",
                     "function" => [
+                        "name"        => "notify_stock_alert",
+                        "description" => "Silently notify the shop owner that a customer requested a quantity that exceeds available stock. Call this FIRST before replying to the customer. Do NOT tell the customer that someone will contact them — you must still answer the customer yourself about the stock situation.",
+                        "parameters"  => [
+                            "type"       => "object",
+                            "properties" => [
+                                "item_name"     => ["type" => "string", "description" => "The item the customer requested."],
+                                "requested_qty" => ["type" => "number", "description" => "Quantity the customer asked for."],
+                                "available_qty" => ["type" => "number", "description" => "Current stock available. Use 0 if out of stock."],
+                            ],
+                            "required" => ["item_name", "requested_qty", "available_qty"],
+                        ],
+                    ],
+                ],
+                [
+                    "type" => "function",
+                    "function" => [
                         "name"        => "escalate_to_admin",
-                        "description" => "Notify a human admin and tell the customer a team member will contact them. Call this when: customer asks for a phone call, requests payment credit or a delay, wants a large bulk order the bot cannot price, asks something genuinely outside the bot's ability, or expresses frustration. Do NOT call for normal product or order questions.",
+                        "description" => "Notify a human admin and tell the customer a team member will contact them. Call this ONLY when: customer explicitly asks for a phone call or to speak to a person, requests credit or payment delay, or expresses genuine frustration/complaint. Do NOT call this for stock/quantity issues — use notify_stock_alert instead. Do NOT call for items not in inventory — just redirect to available items.",
                         "parameters"  => [
                             "type"       => "object",
                             "properties" => [
                                 "reason" => [
                                     "type"        => "string",
-                                    "description" => "Short English summary of what the customer needs (e.g. 'Wants a phone call', 'Requesting credit/delay', 'Bulk order inquiry').",
+                                    "description" => "Short English summary of what the customer needs (e.g. 'Wants a phone call', 'Requesting credit/delay').",
                                 ],
                             ],
                             "required" => ["reason"],
@@ -311,6 +327,22 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                             'tool_call_id' => $toolCall['id'],
                             'name'         => 'get_order_history',
                             'content'      => json_encode($orderHistory),
+                        ];
+
+                    } elseif ($toolCall['function']['name'] === 'notify_stock_alert') {
+                        $args = json_decode($toolCall['function']['arguments'], true);
+                        $this->notifyStockAlert(
+                            $phone,
+                            $args['item_name']     ?? '',
+                            $args['requested_qty'] ?? 0,
+                            $args['available_qty'] ?? 0
+                        );
+
+                        $messages[] = [
+                            'role'         => 'tool',
+                            'tool_call_id' => $toolCall['id'],
+                            'name'         => 'notify_stock_alert',
+                            'content'      => json_encode(['status' => 'notified', 'instruction' => 'Owner has been silently notified. Now tell the customer plainly about the stock situation — do NOT mention that anyone will contact them.']),
                         ];
 
                     } elseif ($toolCall['function']['name'] === 'escalate_to_admin') {
@@ -535,8 +567,9 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Smoothly redirect to what IS available.\n";
         $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): do NOT just say 'nathi'. Respond naturally like a polite shopkeeper — e.g. if customer asks for 'hal': 'Hal nam dan api laga na sir/madam 🙏 api langa Dan Dhal, Paan Piti, Coconut Oil thiyenava, mokakda one?' — use 'sir' or 'madam' based on tone, pick real IN-STOCK items from the table above.\n";
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
+        $p .= "• ITEM NOT IN INVENTORY — If the item is simply not stocked: do NOT escalate and do NOT say 'ape kenek katha karai'. Just redirect naturally to what IS available. e.g. 'Hal nam dan api laga na sir 🙏 api langa Dan Dhal, Paan Piti thiyenava — mokakda one?'\n";
         $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
-        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity cannot be fulfilled: say it plainly in one short sentence. e.g. 'Api langa dan [X]kg thiyenne, ema pamana denna baeri sir 🙏' — clear and simple. Do NOT add unrelated item suggestions.\n";
+        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent — customer won't know). Then tell the customer plainly in one sentence how much IS available. e.g. 'Api langa dan [X]kg thiyenne, ema pamana denna baeri sir 🙏'. Do NOT say 'ape kenek katha karai'. Do NOT escalate.\n";
         $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
         $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -572,14 +605,13 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "━━━━━━━━━━━━━━━━━\n\n";
 
     $p .= "━━━ ESCALATION ━━━\n";
-    $p .= "RULE: You MUST call the escalate_to_admin tool BEFORE writing any reply when:\n";
-    $p .= "  - Customer asks for a phone call or to speak to a person\n";
-    $p .= "  - Customer requests credit, payment delay, or to pay later\n";
-    $p .= "  - Customer wants a bulk order beyond what stock can cover\n";
-    $p .= "  - Customer is frustrated, complaining, or asks something you truly cannot answer\n";
-    $p .= "• The tool call MUST happen first — do NOT reply 'poddak inna' or anything similar unless escalate_to_admin has been called in this same turn.\n";
-    $p .= "• After the tool call succeeds, THEN tell the customer warmly in their language that someone will contact them shortly.\n";
-    $p .= "• For normal product/price/order questions: do NOT call escalate_to_admin.\n";
+    $p .= "RULE: Call escalate_to_admin ONLY when the customer:\n";
+    $p .= "  - Explicitly asks for a phone call or to speak to a real person\n";
+    $p .= "  - Requests credit, payment delay, or to pay later\n";
+    $p .= "  - Is frustrated, complaining, or expresses strong dissatisfaction\n";
+    $p .= "DO NOT escalate for: items not in inventory (redirect instead), quantity > stock (use notify_stock_alert instead), pricing questions, or normal product inquiries.\n";
+    $p .= "• The escalate_to_admin call MUST happen BEFORE writing any reply in those cases — do NOT say 'poddak inna' or 'ape kenek katha karai' unless escalate_to_admin was called in this same turn.\n";
+    $p .= "• After escalate_to_admin succeeds, tell the customer warmly in their language that someone will contact them shortly.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n";
 
     if ($isNewCustomer) {
@@ -960,6 +992,59 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
         Log::warning("No Google Sheet found for name: {$name}. Check permissions to the service account bot.");
         return null;
+    }
+
+    private function notifyStockAlert(string $customerPhone, string $itemName, float $requestedQty, float $availableQty): void
+    {
+        try {
+            $user        = $this->user->fresh();
+            $notifyPhone = $user->private_phone;
+            if (!$notifyPhone) return;
+
+            $notifyPhone = preg_replace('/[^0-9]/', '', $notifyPhone);
+            if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
+                $notifyPhone = '94' . substr($notifyPhone, 1);
+            }
+
+            $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
+            $cleanPhone = preg_replace('/[^0-9]/', '', $cleanPhone);
+
+            $contact = \App\Models\Contact::where('user_id', $user->id)
+                ->where(function ($q) use ($cleanPhone, $customerPhone) {
+                    $q->where('phone', $cleanPhone)
+                      ->orWhere('wa_id', $customerPhone)
+                      ->orWhere('wa_id', $cleanPhone);
+                })->first();
+
+            $displayPhone = $cleanPhone;
+            if ($contact && $contact->phone && strlen($contact->phone) >= 10) {
+                $p = $contact->phone;
+                $displayPhone = (str_starts_with($p, '94') && strlen($p) === 11) ? '0' . substr($p, 2) : $p;
+            } elseif (str_starts_with($cleanPhone, '94') && strlen($cleanPhone) === 11) {
+                $displayPhone = '0' . substr($cleanPhone, 2);
+            }
+
+            $nameLine    = $contact?->name ? "👤 {$contact->name}\n" : '';
+            $stockStatus = $availableQty > 0 ? "Available: {$availableQty}kg" : "Out of stock";
+
+            $msg = "📦 Stock Alert\n"
+                . $nameLine
+                . "📱 {$displayPhone}\n"
+                . "🛒 {$itemName} — Requested: {$requestedQty}kg / {$stockStatus}";
+
+            Http::withHeaders([
+                'x-api-key'    => config('services.node_bridge.secret_key'),
+                'Content-Type' => 'application/json',
+            ])->timeout(15)->post(config('services.node_bridge.url') . '/send-message', [
+                'user_id' => $user->id,
+                'phone'   => $notifyPhone,
+                'message' => $msg,
+            ]);
+
+            Log::info("STOCK_ALERT: {$itemName} req={$requestedQty} avail={$availableQty} customer={$displayPhone}");
+        } catch (\Throwable $e) {
+            Log::error("STOCK_ALERT_FAIL: " . $e->getMessage());
+        }
     }
 
     private function escalateToAdmin(string $customerPhone, string $reason): void
