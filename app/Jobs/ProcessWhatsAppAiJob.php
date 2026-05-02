@@ -274,10 +274,11 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             $aiMsg      = $result->json('choices.0.message') ?? [];
             $totalTokens = $result->json('usage.total_tokens') ?? 0;
 
-            $toolCalls       = $aiMsg['tool_calls'] ?? null;
-            $finalReply      = $aiMsg['content'] ?? '';
-            $extractedOrder  = null;
+            $toolCalls        = $aiMsg['tool_calls'] ?? null;
+            $finalReply       = $aiMsg['content'] ?? '';
+            $extractedOrder   = null;
             $escalationCalled = false;
+            $stockAlertCalled = false;
 
             if ($toolCalls && count($toolCalls) > 0) {
                 // Append assistant message with tool_calls
@@ -337,6 +338,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                             $args['requested_qty'] ?? 0,
                             $args['available_qty'] ?? 0
                         );
+                        $stockAlertCalled = true;
 
                         $messages[] = [
                             'role'         => 'tool',
@@ -390,8 +392,8 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             }
 
             // Safety net: AI sometimes writes "poddak inna" without calling escalate_to_admin tool.
-            // Detect Sinhala/English escalation phrases and trigger the function regardless.
-            if (!$escalationCalled && !empty($finalReply)) {
+            // Skip if a stock alert was already sent (reply will naturally contain "ape kenek katha karai").
+            if (!$escalationCalled && !$stockAlertCalled && !empty($finalReply)) {
                 $lower = mb_strtolower($finalReply);
                 $escalationSignals = [
                     'poddak inna', 'katha karai', 'katha karannam', 'katha karavi',
@@ -569,7 +571,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
         $p .= "• ITEM NOT IN INVENTORY — If the item is simply not stocked: do NOT escalate and do NOT say 'ape kenek katha karai'. Just redirect naturally to what IS available. e.g. 'Hal nam dan api laga na sir 🙏 api langa Dan Dhal, Paan Piti thiyenava — mokakda one?'\n";
         $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
-        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent — customer won't know). Then tell the customer plainly in one sentence how much IS available. e.g. 'Api langa dan [X]kg thiyenne, ema pamana denna baeri sir 🙏'. Do NOT say 'ape kenek katha karai'. Do NOT escalate.\n";
+        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent — do NOT reveal stock numbers to the customer). Then ask the customer WHEN they need it and say warmly that someone from the team will contact them to arrange. e.g. 'Oya tharam gannada sir kawadata? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊'. Do NOT tell the customer how much stock is available. Do NOT just say 'ganna baeri'.\n";
         $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
         $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
