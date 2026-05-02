@@ -379,17 +379,28 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
             // Safety net: AI sometimes writes "poddak inna" without calling escalate_to_admin tool.
             // Skip if a stock alert was already sent (reply will naturally contain "ape kenek katha karai").
+            // Skip if reply is a "not in inventory" message — those should never trigger escalation.
             if (!$escalationCalled && !$stockAlertCalled && !empty($finalReply)) {
                 $lower = mb_strtolower($finalReply);
-                $escalationSignals = [
-                    'poddak inna', 'katha karai', 'katha karannam', 'katha karavi',
-                    'contact karai', 'reach you', 'get back to you', 'someone will contact',
-                    'team member', 'obata katha', 'ape kenek',
-                ];
-                foreach ($escalationSignals as $signal) {
-                    if (str_contains($lower, $signal)) {
-                        $this->escalateToAdmin($phone, 'Customer needs human help (auto-detected from reply)');
+                $notInInventorySignals = ['nathi athi sir', 'api laga na', 'langa na sir', 'api langa na', 'nathi athi madam'];
+                $isNotInInventoryReply = false;
+                foreach ($notInInventorySignals as $niSignal) {
+                    if (str_contains($lower, $niSignal)) {
+                        $isNotInInventoryReply = true;
                         break;
+                    }
+                }
+                if (!$isNotInInventoryReply) {
+                    $escalationSignals = [
+                        'poddak inna', 'katha karai', 'katha karannam', 'katha karavi',
+                        'contact karai', 'reach you', 'get back to you', 'someone will contact',
+                        'team member', 'obata katha', 'ape kenek',
+                    ];
+                    foreach ($escalationSignals as $signal) {
+                        if (str_contains($lower, $signal)) {
+                            $this->escalateToAdmin($phone, 'Customer needs human help (auto-detected from reply)');
+                            break;
+                        }
                     }
                 }
             }
@@ -552,11 +563,11 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• The inventory table above is the ONLY source of truth for products.\n";
         $p .= "• Before answering ANY price or stock question, ALWAYS call search_inventory with the exact item name from the table. Never use the table values directly — they may be stale.\n";
         $p .= "• If an item shows [OUT OF STOCK] in the table, do NOT offer it. Smoothly redirect to what IS available.\n";
-        $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): tell them we don't have it AND mention 2-3 real IN-STOCK items from the table — e.g. 'Apple phones nam dan api laga nathi athi sir 🙏 api langa Dan Dhal, Paan Piti, Coconut Oil thiyenava — mokakda one?' — use real items from the inventory table above. Do NOT promise anyone will contact them. Do NOT say 'ape kenek katha karai' or 'sambanda karagani'. No escalation, no notification.\n";
+        $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): simply say we don't have it — e.g. 'Laptop nam dan api laga nathi athi sir 🙏' or 'Api laga na sir' — short and polite. Do NOT list other items. Do NOT promise anyone will contact them. Do NOT say 'ape kenek katha karai' or 'sambanda karagani'. No escalation, no notification.\n";
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
-        $p .= "• ITEM NOT IN INVENTORY — Item simply not stocked: say 'nathi athi sir' + suggest 2-3 IN-STOCK items (e.g. 'Papadam nam dan api laga nathi athi sir 🙏 api langa Kadala, Dhal, Paan Piti thiyenava — mokakda one?'). NEVER say 'ape kenek katha karai', 'api team eke kenek', 'sambanda karagani', or anything that implies someone will contact. No second-number notification.\n";
+        $p .= "• ITEM NOT IN INVENTORY — Item simply not stocked: say 'api laga na sir' or '[Item] nam dan api laga nathi athi sir 🙏' — keep it short. NEVER list other products. NEVER say 'ape kenek katha karai', 'api team eke kenek', 'sambanda karagani', or anything that implies someone will contact. No second-number notification.\n";
         $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
-        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent). Then your reply MUST do two things: (1) ask WHEN they need it, (2) say OUR PERSON WILL CONTACT THEM — never say 'contact us'. Exact format: '[Item] [qty]kg kawadata gannada sir? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊' — adapt naturally but keep this meaning. NEVER say 'sadaha apata ekka sambandha karanna'. NEVER reveal how much stock is available.\n";
+        $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent). Then your reply MUST: (1) ask WHEN they need it, (2) say OUR PERSON WILL CONTACT THEM. Exact format: '[Item] [qty]kg kawadata gannada sir? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊' — do NOT say 'api laga na sir' (the item IS in stock, just not that quantity). NEVER say 'sadaha apata ekka sambandha karanna'. NEVER reveal how much stock is available.\n";
         $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
         $p .= "• When customer asks broadly what's available (e.g. 'monava thiyenva?', 'what do you have?', 'amak thiyenvada?') — pick 2 or 3 IN-STOCK items from the inventory table (skip [OUT OF STOCK]) and mention them naturally. Do NOT call search_inventory for this.\n";
         $p .= "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
@@ -580,6 +591,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
     $p .= "━━━ ORDER FLOW ━━━\n";
     $p .= "• Collect: item name + quantity + delivery address.\n";
+    $p .= "• If the customer states a quantity (e.g. '9kg', 'ehenam 9k denna'), you already have item + quantity — DO NOT ask 'kopamana ganna oni?' again. Confirm price and immediately ask for the delivery address: e.g. 'Ow sir, Sugar 9kg Rs. 300 ge denna puluwan 😊 Deliver address eka denna puluvanada?'\n";
     $p .= "• Multiple price batches for the same item: ask which batch before quoting.\n";
     $p .= "• Bill (plain text):\n";
     $p .= "  🛒 Bill:\n";
