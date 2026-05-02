@@ -33,11 +33,6 @@ class ProcessBulkMessageJob implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info("Starting Bulk Broadcast for User ID: {$this->user->id}", [
-            'total'     => count($this->contacts),
-            'has_image' => !empty($this->imageUrl),
-        ]);
-
         foreach ($this->contacts as $phone) {
             try {
                 if ($this->user->connection_type === 'web_automation') {
@@ -52,14 +47,11 @@ class ProcessBulkMessageJob implements ShouldQueue
             }
         }
 
-        Log::info("Finished Bulk Broadcast for User ID: {$this->user->id}");
-
         // Delete image from storage after all messages sent
         if ($this->imageUrl) {
             $path = str_replace(url('storage') . '/', '', $this->imageUrl);
             if (Storage::disk('public')->exists($path)) {
                 Storage::disk('public')->delete($path);
-                Log::info("Bulk image deleted: {$path}");
             }
         }
 
@@ -148,7 +140,6 @@ class ProcessBulkMessageJob implements ShouldQueue
                 'phone'   => $phone,
                 'message' => $message,
             ]);
-            Log::info("Balance notification sent via admin WhatsApp → {$phone}");
         } catch (\Throwable $e) {
             Log::error("Balance notification failed (bulk): " . $e->getMessage());
         }
@@ -168,8 +159,6 @@ class ProcessBulkMessageJob implements ShouldQueue
         if ($imageUrl) {
             $payload['image_url'] = $imageUrl;
         }
-
-        Log::info("Bulk send payload", ['phone' => $phone, 'image_url' => $imageUrl ?? 'none']);
 
         $response = Http::withHeaders([
             'x-api-key'    => $apiKey,

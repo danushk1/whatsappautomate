@@ -27,12 +27,10 @@ class WebhookController extends Controller
         $user = User::where('whatsapp_phone_number_id', $phoneNumberId)->first();
 
         if (!$user) {
-            Log::warning('ලියාපදිංචි නැති Phone ID එකක්:', ['phone_id' => $phoneNumberId]);
             return response()->json(['error' => 'Unauthorized Phone ID'], 200);
         }
 
         if ($user->balance <= 0) {
-            Log::warning('Insufficient LKR balance:', ['user_id' => $user->id, 'balance' => $user->balance]);
             return response()->json(['status' => 'insufficient_balance'], 200);
         }
 
@@ -40,7 +38,6 @@ class WebhookController extends Controller
             $msg = data_get($payload, 'entry.0.changes.0.value.messages.0');
             if ($msg) {
                 ProcessWhatsAppAiJob::dispatch($payload, $msg, $user);
-                Log::info('Dispatched ProcessWhatsAppAiJob for phone_id:', ['phone_id' => $phoneNumberId]);
             }
             return response()->json(['status' => 'success'], 200);
         } catch (\Exception $e) {
@@ -65,7 +62,6 @@ class WebhookController extends Controller
         $msgType = $payload['type'] ?? 'text';
 
         if (!$userId || !$from) {
-            Log::warning('Automation webhook: Missing user_id or from');
             return response()->json(['error' => 'Missing required fields'], 400);
         }
 
@@ -105,7 +101,6 @@ class WebhookController extends Controller
 
         $user = User::find($userId);
         if (!$user) {
-            Log::warning('Automation webhook: User not found', ['user_id' => $userId]);
             return response()->json(['error' => 'User not found'], 404);
         }
 
@@ -125,12 +120,10 @@ class WebhookController extends Controller
                 'expires_at'  => now()->addDays(7),
             ]);
 
-            Log::info("Admin inbox: message stored from {$from}");
             return response()->json(['status' => 'stored_as_admin_message'], 200);
         }
 
         if ($user->balance <= 0) {
-            Log::warning('Insufficient LKR balance:', ['user_id' => $user->id, 'balance' => $user->balance]);
             return response()->json(['status' => 'insufficient_balance'], 200);
         }
 
@@ -167,10 +160,6 @@ class WebhookController extends Controller
 
         try {
             ProcessWhatsAppAiJob::dispatch($formattedPayload, $formattedMsg, $user);
-            Log::info('Dispatched from automation webhook:', [
-                'user_id' => $userId,
-                'from' => $from
-            ]);
             return response()->json(['status' => 'success'], 200);
         } catch (\Exception $e) {
             Log::error('Automation webhook error:', ['error' => $e->getMessage()]);
@@ -248,12 +237,6 @@ class WebhookController extends Controller
         }
 
         $user->save();
-
-        Log::info('Credits deducted via Python callback', [
-            'user_id'       => $user->id,
-            'ai_credits'    => $autoReplyCreditsUsed,
-            'order_credits' => $orderCreditsUsed,
-        ]);
 
         return response()->json(['status' => 'ok']);
     }

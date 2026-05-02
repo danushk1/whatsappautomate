@@ -37,7 +37,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     {
         $phone = $this->msg['from'] ?? null;
         if (!$phone) {
-            Log::warning("JOB_ABORTED: No phone in message");
             return;
         }
 
@@ -63,14 +62,12 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 })->exists();
 
             if (!$contactExists && $contactCount >= 3) {
-                Log::info("Free plan contact limit reached for user {$this->user->id}. Ignored message from {$realPhone}.");
                 return;
             }
         }
 
         // Daily rate limit: free plan = max 50 messages per contact per day
         if ($this->hasExceededDailyLimit($phone)) {
-            Log::info("RATE_LIMIT: Daily limit reached for user {$this->user->id}, phone {$phone}");
             return;
         }
 
@@ -90,17 +87,13 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             if ($audioId && $this->user->target_api_key) {
                 try {
                     $localPath = $mediaService->downloadMedia($audioId, $this->user->target_api_key);
-                    Log::info("Downloaded Audio for parsing: {$localPath}");
-
                     $response = Http::withToken(config('services.openai.key'))
                         ->withoutVerifying()
                         ->attach('file', file_get_contents($localPath), 'audio.ogg')
                         ->post('https://api.openai.com/v1/audio/transcriptions', [
                             'model' => 'whisper-1',
                         ]);
-
                     $text = $response->json('text') ?? '';
-                    Log::info("Transcribed Audio: {$text}");
                     unlink($localPath);
                 } catch (Exception $e) {
                     Log::error("Failed to parse audio: " . $e->getMessage());
@@ -112,20 +105,12 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
 
         if (empty(trim($text))) {
-            Log::warning("JOB_ABORTED: Empty text", ['msg_type' => $msgType]);
             return;
         }
-
-        Log::info("JOB_STARTED: Processing message", [
-            'user_id' => $this->user->id,
-            'phone'   => $phone,
-            'text'    => substr($text, 0, 80),
-        ]);
 
         try {
             // Save User Message to DB
             $this->saveChatHistory($phone, 'user', $text);
-            Log::info("JOB_STEP: chat history saved for {$phone}");
 
             // Send typing indicator (web_automation only, best-effort — shows AI is "thinking")
             $this->sendTypingIndicator($phone);
@@ -403,7 +388,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                 ];
                 foreach ($escalationSignals as $signal) {
                     if (str_contains($lower, $signal)) {
-                        Log::info("ESCALATE_AUTODETECT: AI bypassed tool, triggering from reply phrase '{$signal}'");
                         $this->escalateToAdmin($phone, 'Customer needs human help (auto-detected from reply)');
                         break;
                     }
@@ -707,14 +691,12 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         try {
             $serviceAccountPath = storage_path('app/service_account.json');
             if (!file_exists($serviceAccountPath)) {
-                Log::warning("INVENTORY_LOAD: service_account.json not found, skipping inventory context");
                 return [];
             }
 
             $client  = $this->getGoogleClient();
             $sheetId = $this->getSheetId($client, $this->user->google_sheet_name);
             if (!$sheetId) {
-                Log::warning("INVENTORY_LOAD: Sheet '{$this->user->google_sheet_name}' not found in Drive");
                 return [];
             }
 
@@ -723,7 +705,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             $values   = $response->getValues();
 
             if (empty($values) || count($values) < 2) {
-                Log::warning("INVENTORY_LOAD: Inventory tab empty");
                 return [];
             }
 
@@ -751,7 +732,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                     "... ({$totalRows} total items — use search_inventory tool for full results)";
             }
 
-            Log::info("INVENTORY_LOAD: {$totalRows} total items, " . count($rows) . " sent to AI context");
             return $rows;
 
         } catch (Exception $e) {
@@ -794,9 +774,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'message' => $text,
             ]);
 
-            if ($response->successful()) {
-                Log::info("✅ Reply sent via Node Bridge", ['user_id' => $this->user->id, 'phone' => $phone]);
-            } else {
+            if (!$response->successful()) {
                 Log::error("❌ Node Bridge send failed", ['status' => $response->status(), 'body' => $response->body()]);
             }
         } catch (\Exception $e) {
@@ -820,7 +798,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                     ->post($this->user->order_api_url, ['phone' => $phone, 'order' => $orderData]);
 
                 if ($response->successful()) {
-                    Log::info("✅ Order sent to API for {$phone}");
                     $creditsUsed++;
                 } else {
                     Log::error("Order API Write Error for {$phone}: " . $response->body());
@@ -855,7 +832,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                     $body   = new \Google\Service\Sheets\ValueRange(['values' => $values]);
                     $params = ['valueInputOption' => 'USER_ENTERED'];
                     $sheets->spreadsheets_values->append($sheetId, 'Orders!A:H', $body, $params);
-                    Log::info("✅ Order saved to sheet for {$phone}");
                     $creditsUsed++;
                 }
             } catch (Exception $e) {
@@ -891,7 +867,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
         // 2. Default to Google Sheets
         if (empty($this->user->google_sheet_name)) {
-            Log::warning("SHEET_SEARCH: No google_sheet_name set for user {$this->user->id}");
             return [];
         }
 
@@ -915,7 +890,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             $values   = $response->getValues();
 
             if (empty($values) || count($values) < 2) {
-                Log::warning("SHEET_SEARCH: Inventory tab is empty or has no data rows.");
                 return [];
             }
 
@@ -937,7 +911,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 }
             }
 
-            Log::info("SHEET_SEARCH: '{$query}' → " . count($results) . " result(s)");
             return $results;
 
         } catch (Exception $e) {
@@ -993,7 +966,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             return $files->getFiles()[0]->getId();
         }
 
-        Log::warning("No Google Sheet found for name: {$name}. Check permissions to the service account bot.");
+        Log::error("SHEET_NOT_FOUND: '{$name}' — check service account permissions.");
         return null;
     }
 
@@ -1044,7 +1017,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'message' => $msg,
             ]);
 
-            Log::info("STOCK_ALERT: {$itemName} req={$requestedQty} customer={$displayPhone}");
         } catch (\Throwable $e) {
             Log::error("STOCK_ALERT_FAIL: " . $e->getMessage());
         }
@@ -1106,7 +1078,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'message' => $msg,
             ]);
 
-            Log::info("ORDER_NOTIFY: sent to {$notifyPhone} for {$displayPhone}");
         } catch (\Throwable $e) {
             Log::error("ORDER_NOTIFY_FAIL: " . $e->getMessage());
         }
@@ -1120,11 +1091,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             $nodeBridgeUrl = config('services.node_bridge.url');
             $apiKey        = config('services.node_bridge.secret_key');
 
-            Log::info("ESCALATE_START: user={$user->id} private_phone=" . ($notifyPhone ?? 'NULL')
-                . " node_url={$nodeBridgeUrl} reason={$reason}");
-
             if (!$notifyPhone) {
-                Log::warning("ESCALATE_SKIP: private_phone not set for user {$user->id}");
                 return;
             }
 
@@ -1133,8 +1100,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             if (strlen($notifyPhone) === 10 && str_starts_with($notifyPhone, '0')) {
                 $notifyPhone = '94' . substr($notifyPhone, 1);
             }
-
-            Log::info("ESCALATE_PHONE: normalized={$notifyPhone}");
 
             // Clean customer phone to digits only
             $cleanPhone = preg_replace('/@.*$/', '', $customerPhone);
@@ -1179,9 +1144,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'message' => $msg,
             ]);
 
-            if ($response->successful()) {
-                Log::info("ESCALATE_OK: sent to {$notifyPhone} body=" . $response->body());
-            } else {
+            if (!$response->successful()) {
                 Log::error("ESCALATE_FAIL: status={$response->status()} body=" . $response->body()
                     . " user_id={$user->id} to={$notifyPhone}");
             }
@@ -1277,7 +1240,6 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
                 'phone'   => $phone,
                 'message' => $message,
             ]);
-            Log::info("Balance notification sent via admin WhatsApp → {$phone}");
         } catch (\Throwable $e) {
             Log::error("Balance notification failed: " . $e->getMessage());
         }
