@@ -25,6 +25,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
     protected $payload;
     protected $msg;
     protected $user;
+    protected ?array $cachedInventory = null;
 
     public function __construct(array $payload, array $msg, User $user)
     {
@@ -53,18 +54,6 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             $realPhone = '94' . substr($realPhone, 1);
         }
 
-        // Enforce Free Plan Limits (Max 3 Contacts)
-        if ($this->user->plan_type === 'free') {
-            $contactCount  = \App\Models\Contact::where('user_id', $this->user->id)->count();
-            $contactExists = \App\Models\Contact::where('user_id', $this->user->id)
-                ->where(function ($q) use ($realPhone, $rawPhone) {
-                    $q->where('phone', $realPhone)->orWhere('phone', $rawPhone);
-                })->exists();
-
-            if (!$contactExists && $contactCount >= 3) {
-                return;
-            }
-        }
 
         // Daily rate limit: free plan = max 50 messages per contact per day
         if ($this->hasExceededDailyLimit($phone)) {
@@ -115,8 +104,9 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             // Send typing indicator (web_automation only, best-effort — shows AI is "thinking")
             $this->sendTypingIndicator($phone);
 
-            // Load full inventory ONCE upfront and pass to prompt
+            // Load full inventory ONCE upfront — cache in property so searchInventory reuses it
             $inventoryList = $this->loadFullInventory();
+            $this->cachedInventory = $inventoryList;
 
             // Assemble Prompt — passes new-customer flag for dynamic greeting
             $systemPrompt = $this->getSystemPrompt($isSilentExtraction, $inventoryList, $isNewCustomer);
@@ -379,7 +369,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
             // Safety net: AI sometimes writes "poddak inna" without calling escalate_to_admin tool.
             // Skip if a stock alert was already sent (reply will naturally contain "ape kenek katha karai").
-            // Skip if reply is a "not in inventory" message — those should never trigger escalation.
+            // Skip if current OR previous reply is a "not in inventory" message (covers follow-up turns).
             if (!$escalationCalled && !$stockAlertCalled && !empty($finalReply)) {
                 $lower = mb_strtolower($finalReply);
                 $notInInventorySignals = ['nathi athi sir', 'api laga na', 'langa na sir', 'api langa na', 'nathi athi madam'];
@@ -388,6 +378,22 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     if (str_contains($lower, $niSignal)) {
                         $isNotInInventoryReply = true;
                         break;
+                    }
+                }
+                // Also check if the PREVIOUS AI reply was a not-in-inventory message (customer follow-up)
+                if (!$isNotInInventoryReply) {
+                    $lastAssistantContent = mb_strtolower(
+                        ChatHistory::where('user_id', $this->user->id)
+                            ->where('phone', $phone)
+                            ->where('role', 'assistant')
+                            ->orderBy('timestamp', 'desc')
+                            ->value('content') ?? ''
+                    );
+                    foreach ($notInInventorySignals as $niSignal) {
+                        if (str_contains($lastAssistantContent, $niSignal)) {
+                            $isNotInInventoryReply = true;
+                            break;
+                        }
                     }
                 }
                 if (!$isNotInInventoryReply) {
@@ -518,10 +524,10 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             ->where('phone', $phone)
             ->where('role', 'assistant')
             ->where(function ($q) {
-                $q->where('content', 'like', '%✅ Order%')
-                  ->orWhere('content', 'like', '%Order confirm%')
-                  ->orWhere('content', 'like', '%confirm karannada%')
-                  ->orWhere('content', 'like', '%ඇණවුම%');
+                $q->where('content', 'like', '%🛒 Bill%')
+                  ->orWhere('content', 'like', '%🛒Bill%')
+                  ->orWhere('content', 'like', '%Total: Rs%')
+                  ->orWhere('content', 'like', '%Address:%');
             })
             ->orderBy('timestamp', 'desc')
             ->limit(5)
@@ -566,6 +572,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $p .= "• If the customer asks for a specific item that is NOT in the inventory (or no match found): simply say we don't have it — e.g. 'Laptop nam dan api laga nathi athi sir 🙏' or 'Api laga na sir' — short and polite. Do NOT list other items. Do NOT promise anyone will contact them. Do NOT say 'ape kenek katha karai' or 'sambanda karagani'. No escalation, no notification.\n";
         $p .= "• If the customer's word does NOT clearly match any inventory item name, ASK them to clarify. Never guess or rename.\n";
         $p .= "• ITEM NOT IN INVENTORY — Item simply not stocked: say 'api laga na sir' or '[Item] nam dan api laga nathi athi sir 🙏' — keep it short. NEVER list other products. NEVER say 'ape kenek katha karai', 'api team eke kenek', 'sambanda karagani', or anything that implies someone will contact. No second-number notification.\n";
+        $p .= "• FOLLOW-UP AFTER NOT-IN-INVENTORY — If the customer asks 'e ai?', 'why?', 'kohomada?', or any follow-up question after you said an item is not available: answer simply and naturally (e.g. 'Api market eke gennaddi laga na wuna sir 🙏' or 'Dan laga na sir, api gennaddi thiyenava'). NEVER say 'api kenek katha karai' or 'sambanda karagani' in follow-up either. The item is simply not stocked — no contact is needed.\n";
         $p .= "• STOCK QUANTITY — Never mention batch dates or batch codes to the customer. Only say how much stock is available when the customer asks for a specific quantity — and only to tell them whether it can be fulfilled or how much IS available so they can decide. Never volunteer stock numbers otherwise.\n";
         $p .= "• QUANTITY NOT AVAILABLE — If the requested quantity exceeds available stock: call notify_stock_alert FIRST (silent). Then your reply MUST: (1) ask WHEN they need it, (2) say OUR PERSON WILL CONTACT THEM. Exact format: '[Item] [qty]kg kawadata gannada sir? Poddak inna, ape kenek obava ikmanin sambanda karagani 😊' — do NOT say 'api laga na sir' (the item IS in stock, just not that quantity). NEVER say 'sadaha apata ekka sambandha karanna'. NEVER reveal how much stock is available.\n";
         $p .= "• MULTIPLE PRICE BATCHES — If the same item has multiple price rows: always quote the LOWEST price first. If quantity spans both batches, explain simply without mentioning dates: e.g. '[X]kg Rs.300 ge denna puluwa, ethanin vadi gennavnam aluth stock eke Rs.350 ge — combine wenava. Mokakda one?'\n";
@@ -858,6 +865,22 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
     private function searchInventory($query)
     {
+        // 0. Use cached inventory (already loaded for system prompt) — skip 2nd Sheets call
+        if ($this->cachedInventory !== null && empty($this->user->inventory_api_url)) {
+            $terms   = $this->buildSearchTerms($query);
+            $results = [];
+            foreach ($this->cachedInventory as $item) {
+                $rowStr = strtolower(json_encode($item));
+                foreach ($terms as $term) {
+                    if (str_contains($rowStr, $term)) {
+                        $results[] = $item;
+                        break;
+                    }
+                }
+            }
+            return $results;
+        }
+
         // 1. If an inventory API URL is provided, try that first.
         if (!empty($this->user->inventory_api_url)) {
             try {

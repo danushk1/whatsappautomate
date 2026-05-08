@@ -14,5 +14,7 @@ class AdminSetting extends Model
         'bank_branch',
         'low_balance_message',
         'suspended_message',
+        'free_signup_credits',
+        'free_signup_balance',
     ];
 }

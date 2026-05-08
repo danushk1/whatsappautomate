@@ -33,7 +33,12 @@ class ProcessBulkMessageJob implements ShouldQueue
 
     public function handle(): void
     {
-        foreach ($this->contacts as $phone) {
+        // Free plan: limit bulk send to first 3 contacts only
+        $contacts = $this->user->plan_type === 'free'
+            ? array_slice($this->contacts, 0, 3)
+            : $this->contacts;
+
+        foreach ($contacts as $phone) {
             try {
                 if ($this->user->connection_type === 'web_automation') {
                     $this->sendViaNodeBridge($phone, $this->message, $this->imageUrl);

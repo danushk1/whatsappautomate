@@ -107,10 +107,12 @@ class User extends Authenticatable implements FilamentUser
                 $user->api_key = \Illuminate\Support\Str::random(40);
             }
             if (!isset($user->credits)) {
-                $user->credits = 50;
+                $setting = \App\Models\AdminSetting::first();
+                $user->credits = $setting?->free_signup_credits ?? 100;
             }
             if (!isset($user->balance)) {
-                $user->balance = 250.0000;
+                $setting = $setting ?? \App\Models\AdminSetting::first();
+                $user->balance = $setting?->free_signup_balance ?? 250.0000;
             }
             if (!isset($user->connection_type)) {
                 $user->connection_type = 'web_automation';
