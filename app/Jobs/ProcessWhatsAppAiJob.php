@@ -372,7 +372,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
             // Skip if current OR previous reply is a "not in inventory" message (covers follow-up turns).
             if (!$escalationCalled && !$stockAlertCalled && !empty($finalReply)) {
                 $lower = mb_strtolower($finalReply);
-                $notInInventorySignals = ['nathi athi sir', 'api laga na', 'langa na sir', 'api langa na', 'nathi athi madam'];
+                $notInInventorySignals = ['na sir', 'api laga na', 'langa na sir', 'api langa na', 'na madam'];
                 $isNotInInventoryReply = false;
                 foreach ($notInInventorySignals as $niSignal) {
                     if (str_contains($lower, $niSignal)) {

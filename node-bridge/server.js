@@ -197,6 +197,9 @@ async function getOrCreateClient(userId) {
         // Skip WhatsApp status broadcasts (status updates / stories)
         if (message.from === 'status@broadcast') return;
 
+        // Skip group chats and newsletters — only process individual chats
+        if (message.from.endsWith('@g.us') || message.from.includes('@newsletter')) return;
+
         console.log(`[${userId}] 📩 Message from ${message.from}: ${message.body.substring(0, 50)}`);
 
         // Ignore own messages and status broadcasts
@@ -260,6 +263,7 @@ async function getOrCreateClient(userId) {
     client.on('message_create', async (message) => {
         if (!message.fromMe) return;
         if (message.to === 'status@broadcast') return; // Skip status posts
+        if (message.to.endsWith('@g.us') || message.to.includes('@newsletter')) return; // Skip groups/newsletters
         
         console.log(`[${userId}] 📤 Outgoing message to ${message.to}: ${message.body.substring(0, 50)}`);
 
@@ -490,11 +494,32 @@ app.post('/send-message', async (req, res) => {
         try {
             await sendMsg(chatId);
         } catch (err) {
-            // If @c.us fails with LID error, retry with @lid format
-            if (err.message && err.message.includes('No LID') && chatId.endsWith('@c.us')) {
+            const msg = err.message || '';
+            if (msg.includes('No LID') && chatId.endsWith('@c.us')) {
+                // @c.us failed with LID error → retry with @lid
                 const lidId = chatId.replace('@c.us', '@lid');
-                console.log(`[${user_id}] Retrying with @lid: ${lidId}`);
+                console.log(`[${user_id}] No LID error, retrying with @lid: ${lidId}`);
                 await sendMsg(lidId);
+            } else if ((msg.includes('No LID') || msg === 't: t') && chatId.endsWith('@lid')) {
+                // @lid failed → retry with @c.us
+                const cusId = chatId.replace('@lid', '@c.us');
+                console.log(`[${user_id}] @lid send failed (${msg}), retrying with @c.us: ${cusId}`);
+                await sendMsg(cusId);
+            } else if (msg === 't: t') {
+                // Generic WhatsApp send error on @c.us — try getNumberId fresh
+                console.log(`[${user_id}] Generic send error (t: t), refreshing number ID and retrying`);
+                try {
+                    const numId = await clientData.client.getNumberId(actualPhone);
+                    const freshId = numId ? numId._serialized : chatId;
+                    if (freshId !== chatId) {
+                        console.log(`[${user_id}] Fresh ID: ${freshId}, retrying`);
+                        await sendMsg(freshId);
+                    } else {
+                        throw err;
+                    }
+                } catch (_) {
+                    throw err;
+                }
             } else {
                 throw err;
             }
