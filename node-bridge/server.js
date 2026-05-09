@@ -598,6 +598,46 @@ app.post('/typing', async (req, res) => {
 });
 
 // ============================================
+// AUTO-RESTORE SAVED SESSIONS ON STARTUP
+// ============================================
+
+/**
+ * On server start, scan the sessions directory and re-initialize
+ * any user that already has a saved WhatsApp session on disk.
+ * This ensures auto-reply works 24/7 even after PM2 restart —
+ * no QR re-scan needed, no browser/login required.
+ */
+async function autoInitializeSavedSessions() {
+    if (!fs.existsSync(SESSION_DIR)) return;
+
+    const entries = fs.readdirSync(SESSION_DIR, { withFileTypes: true });
+    const sessionFolders = entries
+        .filter(e => e.isDirectory() && e.name.startsWith('session-'))
+        .map(e => e.name);
+
+    if (sessionFolders.length === 0) {
+        console.log('[STARTUP] No saved sessions found.');
+        return;
+    }
+
+    console.log(`[STARTUP] Found ${sessionFolders.length} saved session(s) — restoring...`);
+
+    for (const folder of sessionFolders) {
+        const userId = parseInt(folder.replace('session-', ''), 10);
+        if (isNaN(userId)) continue;
+
+        console.log(`[STARTUP] Restoring session for user ${userId}...`);
+        // Non-blocking: initialize in background, don't await sequentially
+        getOrCreateClient(userId).catch(err => {
+            console.error(`[STARTUP] Failed to restore session for user ${userId}:`, err.message);
+        });
+
+        // Small stagger to avoid hammering Puppeteer with parallel launches
+        await new Promise(r => setTimeout(r, 3000));
+    }
+}
+
+// ============================================
 // START SERVER
 // ============================================
 
@@ -621,6 +661,9 @@ app.listen(PORT, () => {
 ║     POST /typing                          ║
 ╚═══════════════════════════════════════════╝
     `);
+
+    // Restore all saved WhatsApp sessions so auto-reply is live immediately
+    autoInitializeSavedSessions();
 });
 
 // Graceful shutdown
