@@ -110,6 +110,7 @@ async function getOrCreateClient(userId) {
         status: 'initializing',
         qrReady: false,
         userId,
+        phoneToLastMsgId: new Map(), // phone → last received message ID (for @lid send fallback)
     };
 
     clients.set(key, clientData);
@@ -205,6 +206,9 @@ async function getOrCreateClient(userId) {
         // Ignore own messages and status broadcasts
         // Extract original phone number format
         const phone = message.from.replace('@c.us', '').replace('@s.whatsapp.net', '');
+
+        // Cache the message ID so we can look up the proper chat when replying to @lid contacts
+        clientData.phoneToLastMsgId.set(phone, message.id._serialized);
 
         // Extract REAL phone number for bulk messaging
         let realPhone = phone;
@@ -501,10 +505,30 @@ app.post('/send-message', async (req, res) => {
                 console.log(`[${user_id}] No LID error, retrying with @lid: ${lidId}`);
                 await sendMsg(lidId);
             } else if ((msg.includes('No LID') || msg === 't: t') && chatId.endsWith('@lid')) {
-                // @lid failed → retry with @c.us
-                const cusId = chatId.replace('@lid', '@c.us');
-                console.log(`[${user_id}] @lid send failed (${msg}), retrying with @c.us: ${cusId}`);
-                await sendMsg(cusId);
+                // @lid failed — look up the proper chat via the last received message from this contact
+                const lastMsgId = clientData.phoneToLastMsgId?.get(phone);
+                if (lastMsgId) {
+                    console.log(`[${user_id}] @lid send failed (${msg}), resolving chat via message ${lastMsgId}`);
+                    try {
+                        const origMsg = await clientData.client.getMessageById(lastMsgId);
+                        const chat = await origMsg.getChat();
+                        console.log(`[${user_id}] Resolved internal chat ID: ${chat.id._serialized}`);
+                        if (image_url) {
+                            const media = await MessageMedia.fromUrl(image_url, { unsafeMime: true });
+                            await chat.sendMessage(media, { caption: message || '' });
+                        } else {
+                            await chat.sendMessage(message);
+                        }
+                        console.log(`[${user_id}] ✅ Sent via chat lookup`);
+                    } catch (chatErr) {
+                        console.warn(`[${user_id}] Chat lookup failed (${chatErr.message}), falling back to @c.us`);
+                        await sendMsg(chatId.replace('@lid', '@c.us'));
+                    }
+                } else {
+                    const cusId = chatId.replace('@lid', '@c.us');
+                    console.log(`[${user_id}] @lid send failed, no cached message — trying @c.us: ${cusId}`);
+                    await sendMsg(cusId);
+                }
             } else if (msg === 't: t') {
                 // Generic WhatsApp send error on @c.us — try getNumberId fresh
                 console.log(`[${user_id}] Generic send error (t: t), refreshing number ID and retrying`);
