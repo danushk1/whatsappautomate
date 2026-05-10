@@ -81,13 +81,14 @@ class ContactController extends Controller
             $response = Http::withHeaders([
                 'x-api-key'    => $apiKey,
                 'Content-Type' => 'application/json',
-            ])->timeout(30)->post("{$nodeBridgeUrl}/get-contacts", [
+            ])->timeout(60)->post("{$nodeBridgeUrl}/get-contacts", [
                 'user_id' => $user->id,
                 'search'  => $search,
             ]);
 
             if (!$response->successful()) {
-                return response()->json(['error' => 'WhatsApp not connected or failed to fetch contacts.'], 503);
+                $bridgeError = $response->json('error') ?? $response->body();
+                return response()->json(['error' => 'Bridge error (' . $response->status() . '): ' . $bridgeError], 503);
             }
 
             // Annotate with existing block status
