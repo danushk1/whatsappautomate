@@ -220,8 +220,16 @@
                 });
                 const data = await res.json();
 
-                if (data.error) {
-                    status.textContent = '⚠️ ' + data.error;
+                if (data.error === 'not_connected' || data.error) {
+                    const msg = data.message || data.error;
+                    status.innerHTML = `<div class="text-center py-6">
+                        <p class="text-amber-400 font-semibold mb-2">⚠️ WhatsApp Not Connected</p>
+                        <p class="text-slate-400 text-xs mb-4">${msg}</p>
+                        <button onclick="showTab('tab-bulk')" class="px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-sm font-semibold">
+                            Use Bulk Import Instead →
+                        </button>
+                    </div>`;
+                    status.classList.remove('hidden');
                     return;
                 }
 

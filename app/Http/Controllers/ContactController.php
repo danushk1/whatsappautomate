@@ -77,6 +77,16 @@ class ContactController extends Controller
         $nodeBridgeUrl = config('services.node_bridge.url');
         $apiKey        = config('services.node_bridge.secret_key');
 
+        // Only web_automation users have a bridge session
+        if ($user->connection_type !== 'web_automation') {
+            return response()->json(['error' => 'not_connected', 'message' => 'WhatsApp contact sync is only available for accounts connected via QR code. Use Bulk Import instead.'], 503);
+        }
+
+        // Check if WhatsApp was ever connected
+        if (!$user->whatsapp_connected_at && !$user->whatsapp_session) {
+            return response()->json(['error' => 'not_connected', 'message' => 'No WhatsApp account connected. Please connect your WhatsApp from the dashboard first.'], 503);
+        }
+
         try {
             $response = Http::withHeaders([
                 'x-api-key'    => $apiKey,
@@ -88,7 +98,10 @@ class ContactController extends Controller
 
             if (!$response->successful()) {
                 $bridgeError = $response->json('error') ?? $response->body();
-                return response()->json(['error' => 'Bridge error (' . $response->status() . '): ' . $bridgeError], 503);
+                if (str_contains($bridgeError, 'not connected')) {
+                    return response()->json(['error' => 'not_connected', 'message' => 'WhatsApp is not currently active. Please reconnect from the dashboard, wait a minute, then try again.'], 503);
+                }
+                return response()->json(['error' => 'bridge_error', 'message' => $bridgeError], 503);
             }
 
             // Annotate with existing block status
