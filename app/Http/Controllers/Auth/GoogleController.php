@@ -39,6 +39,7 @@ class GoogleController extends Controller
 
             if ($user->is_admin) {
                 return redirect()->route('admin.dashboard');
+
             }
             
 
