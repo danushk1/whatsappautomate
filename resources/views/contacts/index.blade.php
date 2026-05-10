@@ -36,7 +36,7 @@
 
         <div>
             <h2 class="text-2xl font-extrabold text-white">Auto-Reply Block List</h2>
-            <p class="text-slate-400 mt-1 text-sm">Blocked contacts message karana vita bot eka reply karanawa nathi.</p>
+            <p class="text-slate-400 mt-1 text-sm">Blocked contacts will not receive any automated bot replies.</p>
         </div>
 
         <!-- ── Tab Bar ── -->
@@ -64,7 +64,7 @@
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider">WhatsApp Contacts</h3>
-                    <p class="text-xs text-slate-500 mt-0.5">Connected WhatsApp eke contacts list eka — select karala block karanna.</p>
+                    <p class="text-xs text-slate-500 mt-0.5">Load contacts from your connected WhatsApp account, then select and block.</p>
                 </div>
                 <button onclick="loadWaContacts()" id="btn-load-wa"
                     class="px-4 py-2 bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-xl text-sm font-semibold transition-all">
@@ -77,7 +77,7 @@
                 class="w-full mb-4 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500">
 
             <div id="wa-status" class="text-center py-8 text-slate-500 text-sm">
-                Click "Load Contacts" to fetch from your WhatsApp.
+                Click <strong class="text-slate-400">Load Contacts</strong> to fetch contacts from your connected WhatsApp.
             </div>
 
             <div id="wa-contact-list" class="space-y-1 max-h-80 overflow-y-auto hidden"></div>
@@ -94,7 +94,7 @@
         <!-- ── Tab: Bulk Import ── -->
         <div id="tab-bulk" class="glass-card rounded-2xl p-5 hidden">
             <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-1">Bulk Block Numbers</h3>
-            <p class="text-xs text-slate-500 mb-4">Numbers 400k wath paste karanna puluwan. One per line, comma, or space separated.</p>
+            <p class="text-xs text-slate-500 mb-4">Paste any number of phone numbers — one per line, comma or space separated.</p>
             <form method="POST" action="{{ route('contacts.bulk-block') }}">
                 @csrf
                 <textarea name="numbers" rows="8" placeholder="94771234567&#10;94712345678&#10;0771234567, 0712345678&#10;..."
@@ -121,7 +121,7 @@
                     Block
                 </button>
             </form>
-            <p class="text-slate-500 text-xs mt-2">Blocked contacts can still message you — bot just won't reply.</p>
+            <p class="text-slate-500 text-xs mt-2">Blocked contacts can still message you — the bot simply won't reply.</p>
         </div>
 
         <!-- ── Tab: Blocked List ── -->
@@ -172,7 +172,7 @@
             </div>
             @empty
             <div class="px-5 py-12 text-center">
-                <p class="text-slate-500 text-sm">No contacts yet. Contacts appear when someone messages you.</p>
+                <p class="text-slate-500 text-sm">No contacts yet. They appear automatically when someone messages your WhatsApp.</p>
             </div>
             @endforelse
 
