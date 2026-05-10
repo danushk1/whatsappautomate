@@ -216,7 +216,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                     "type" => "function",
                     "function" => [
                         "name"        => "escalate_to_admin",
-                        "description" => "Notify a human admin and tell the customer a team member will contact them. Call this ONLY when: customer explicitly asks for a phone call or to speak to a person, requests credit or payment delay, or expresses genuine frustration/complaint. Do NOT call this for stock/quantity issues — use notify_stock_alert instead. Do NOT call for items not in inventory — just redirect to available items.",
+                        "description" => "Notify a human admin and tell the customer a team member will contact them. Call this when: customer explicitly asks for a phone call or to speak to a person, requests credit or payment delay, expresses genuine frustration/complaint, wants to return a product, OR when you genuinely cannot answer the customer's question (do not guess or make up an answer — escalate instead). Do NOT call this for stock/quantity issues — use notify_stock_alert instead. Do NOT call for items not in inventory — just say na sir.",
                         "parameters"  => [
                             "type"       => "object",
                             "properties" => [
@@ -620,12 +620,14 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "━━━━━━━━━━━━━━━━━\n\n";
 
     $p .= "━━━ ESCALATION ━━━\n";
-    $p .= "RULE: Call escalate_to_admin ONLY when the customer:\n";
+    $p .= "RULE: Call escalate_to_admin when the customer:\n";
     $p .= "  - Explicitly asks for a phone call or to speak to a real person\n";
     $p .= "  - Wants to return a product or order\n";
     $p .= "  - Requests credit, payment delay, or to pay later\n";
     $p .= "  - Is frustrated, complaining, or expresses strong dissatisfaction\n";
+    $p .= "  - Asks something you genuinely CANNOT answer (unknown delivery times, special discounts, custom deals, anything outside your knowledge) — NEVER guess or make up an answer. If you are not sure, call escalate_to_admin and tell the customer a team member will contact them shortly.\n";
     $p .= "DO NOT escalate for: items not in inventory (just say na sir), quantity > stock (use notify_stock_alert instead), pricing questions, or normal product inquiries.\n";
+    $p .= "HONESTY RULE: If you do not know the answer — call escalate_to_admin and say 'Api kenek dan obava sambanda karagani sir 🙏' or similar. NEVER invent an answer, guess a price, or make a promise you cannot keep.\n";
     $p .= "• The escalate_to_admin call MUST happen BEFORE writing any reply in those cases — do NOT say 'poddak inna' or 'ape kenek katha karai' unless escalate_to_admin was called in this same turn.\n";
     $p .= "• After escalate_to_admin succeeds, tell the customer warmly in their language that someone will contact them shortly.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n";
