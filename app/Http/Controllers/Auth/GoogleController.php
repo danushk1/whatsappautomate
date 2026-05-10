@@ -41,6 +41,7 @@ class GoogleController extends Controller
                 return redirect()->route('admin.dashboard');
             }
             
+
             return redirect()->intended('/dashboard');
             
         } catch (\Exception $e) {
