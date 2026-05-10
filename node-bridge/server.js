@@ -573,22 +573,32 @@ app.post('/get-contacts', async (req, res) => {
 
     try {
         const all = await clientData.client.getContacts();
-        const s = search.toLowerCase();
+        const s = search ? search.toLowerCase() : '';
 
-        const filtered = all
-            .filter(c => c.isMyContact && c.number && !c.isGroup && !c.isBroadcast)
+        const personal = all.filter(c =>
+            c.isMyContact &&
+            c.number &&
+            typeof c.number === 'string' &&
+            c.id && c.id._serialized &&
+            !c.isGroup &&
+            !c.isBroadcast
+        );
+
+        const filtered = personal
             .filter(c => {
                 if (!s) return true;
-                return (c.pushname || c.name || '').toLowerCase().includes(s) || c.number.includes(s);
+                const name = String(c.pushname || c.name || '').toLowerCase();
+                const num  = String(c.number);
+                return name.includes(s) || num.includes(s);
             })
             .slice(0, 200)
             .map(c => ({
                 name:   c.pushname || c.name || '',
-                number: c.number,
+                number: String(c.number),
                 id:     c.id._serialized,
             }));
 
-        res.json({ contacts: filtered, total: all.filter(c => c.isMyContact && c.number && !c.isGroup).length });
+        res.json({ contacts: filtered, total: personal.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
