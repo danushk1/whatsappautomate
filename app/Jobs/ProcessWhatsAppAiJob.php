@@ -636,9 +636,17 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         if ($greeting) {
             $p .= "\nFIRST MESSAGE: This is the customer's very first message to this shop. Start your reply with this welcome greeting: \"{$greeting}\" — say it naturally, then answer their question in the same message. Make them feel genuinely welcome.\n";
         } else {
-            $p .= "\nFIRST MESSAGE: This is the customer's very first message. Open with a warm, natural welcome that mentions '{$companyName}' and makes the customer feel like they've come to the right place. One or two sentences max — genuine and friendly, not a corporate script. Write in the same language/script the customer used. Then answer their question.\n";
+            $p .= "\nFIRST MESSAGE: This is the customer's very first message. Greet them warmly AND introduce the shop in a natural way — mention what '{$companyName}' sells or does based on the company description below:\n";
+            $p .= "Company description: {$companyDetails}\n";
+            $p .= "Example style (adapt to actual company): 'හායි! {$companyName} එකට සාදරයෙන් පිළිගනිමු 😊 අපේ shop එකෙන් [what we sell] ගන්න පුළුවන්. මොනවද ඕනේ?' — write in the customer's language/script, one or two sentences, genuine and friendly. Then answer their question if they asked one.\n";
+            $p .= "IMPORTANT: The greeting MUST reflect the actual business — never use a generic 'How can I help you?' without mentioning what the company does.\n";
         }
     }
+
+    $p .= "\nGREETING-ONLY MESSAGES: If the customer sends only a greeting ('hi', 'hello', 'ayubowan', 'hii', 'kohomada', etc.) with no specific question:\n";
+    $p .= "• DO NOT say just 'Kohomada oyata saha karanna puluwan dewal?' — this is too generic.\n";
+    $p .= "• Instead, warmly greet them AND briefly mention 1-2 things the shop offers (from the inventory or company description), inviting them to ask.\n";
+    $p .= "• Example for a grocery shop: 'හායි sir 😊 {$companyName} shop එකෙන් හාල්, සීනි, ගෙදර ආහාර stuff order කරන්න පුළුවන්. මොනවද ඕනේ?' — natural, specific to what you actually sell.\n";
 
     return $p;
 }
