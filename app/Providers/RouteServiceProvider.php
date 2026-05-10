@@ -42,6 +42,11 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request) {
+            // Webhook and node-bridge endpoints are internal — exempt from rate limiting
+            $path = $request->path();
+            if (str_contains($path, 'whatsapp/webhook') || str_contains($path, 'node-bridge')) {
+                return Limit::none();
+            }
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
         });
     }
