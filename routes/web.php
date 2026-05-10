@@ -43,6 +43,11 @@ Route::middleware(['auth', 'single.session'])->group(function () {
     // Bulk Broadcasting
     Route::get('/bulk-message', [\App\Http\Controllers\BulkMessageController::class, 'index'])->name('bulk-message.index');
     Route::post('/bulk-message/send', [\App\Http\Controllers\BulkMessageController::class, 'send'])->name('bulk-message.send');
+
+    // Contacts — block/unblock from bot replies
+    Route::get('/contacts', [\App\Http\Controllers\ContactController::class, 'index'])->name('contacts.index');
+    Route::post('/contacts/{id}/toggle-block', [\App\Http\Controllers\ContactController::class, 'toggleBlock'])->name('contacts.toggle-block');
+    Route::post('/contacts/add-blocked', [\App\Http\Controllers\ContactController::class, 'addBlocked'])->name('contacts.add-blocked');
 });
 
 // Admin Routes

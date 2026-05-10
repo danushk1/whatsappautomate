@@ -12,10 +12,12 @@ class Contact extends Model
         'wa_id',
         'name',
         'last_messaged_at',
+        'is_blocked',
     ];
 
     protected $casts = [
         'last_messaged_at' => 'datetime',
+        'is_blocked'       => 'boolean',
     ];
 
     public function user()

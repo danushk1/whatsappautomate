@@ -55,6 +55,17 @@ class ProcessWhatsAppAiJob implements ShouldQueue
         }
 
 
+        // Skip blocked contacts — personal contacts who should not receive bot replies
+        $isBlocked = \App\Models\Contact::where('user_id', $this->user->id)
+            ->where(function ($q) use ($phone, $realPhone) {
+                $q->where('wa_id', $phone)->orWhere('phone', $realPhone);
+            })
+            ->where('is_blocked', true)
+            ->exists();
+        if ($isBlocked) {
+            return;
+        }
+
         // Daily rate limit: free plan = max 50 messages per contact per day
         if ($this->hasExceededDailyLimit($phone)) {
             return;
