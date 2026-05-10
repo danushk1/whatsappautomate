@@ -48,6 +48,9 @@ Route::middleware(['auth', 'single.session'])->group(function () {
     Route::get('/contacts', [\App\Http\Controllers\ContactController::class, 'index'])->name('contacts.index');
     Route::post('/contacts/{id}/toggle-block', [\App\Http\Controllers\ContactController::class, 'toggleBlock'])->name('contacts.toggle-block');
     Route::post('/contacts/add-blocked', [\App\Http\Controllers\ContactController::class, 'addBlocked'])->name('contacts.add-blocked');
+    Route::post('/contacts/bulk-block', [\App\Http\Controllers\ContactController::class, 'bulkBlock'])->name('contacts.bulk-block');
+    Route::get('/contacts/whatsapp-list', [\App\Http\Controllers\ContactController::class, 'whatsappList'])->name('contacts.whatsapp-list');
+    Route::post('/contacts/whatsapp-block', [\App\Http\Controllers\ContactController::class, 'blockWhatsAppContacts'])->name('contacts.whatsapp-block');
 });
 
 // Admin Routes

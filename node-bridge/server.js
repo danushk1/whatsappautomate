@@ -558,6 +558,43 @@ app.post('/send-message', async (req, res) => {
 });
 
 /**
+ * POST /get-contacts
+ * Fetch WhatsApp contact list for a user (personal contacts only, excludes groups)
+ * Body: { user_id: number, search?: string }
+ */
+app.post('/get-contacts', async (req, res) => {
+    const { user_id, search = '' } = req.body;
+    if (!user_id) return res.status(400).json({ error: 'user_id is required' });
+
+    const clientData = clients.get(String(user_id));
+    if (!clientData || clientData.status !== 'connected') {
+        return res.status(503).json({ error: 'WhatsApp not connected' });
+    }
+
+    try {
+        const all = await clientData.client.getContacts();
+        const s = search.toLowerCase();
+
+        const filtered = all
+            .filter(c => c.isMyContact && c.number && !c.isGroup && !c.isBroadcast)
+            .filter(c => {
+                if (!s) return true;
+                return (c.pushname || c.name || '').toLowerCase().includes(s) || c.number.includes(s);
+            })
+            .slice(0, 200)
+            .map(c => ({
+                name:   c.pushname || c.name || '',
+                number: c.number,
+                id:     c.id._serialized,
+            }));
+
+        res.json({ contacts: filtered, total: all.filter(c => c.isMyContact && c.number && !c.isGroup).length });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
  * POST /get-qr
  * Get current QR code for a user
  * Body: { user_id: number }
