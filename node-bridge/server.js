@@ -584,7 +584,21 @@ app.post('/get-contacts', async (req, res) => {
             !c.isBroadcast
         );
 
-        const filtered = personal
+        // Deduplicate: same contact can appear twice (real phone + LID number).
+        // Group by name, keep the entry with the shortest number (real phone numbers
+        // are 10-13 digits; LID/internal numbers are 14+ digits).
+        const nameMap = new Map();
+        for (const c of personal) {
+            const key  = String(c.pushname || c.name || c.number).toLowerCase().trim();
+            const num  = String(c.number);
+            const prev = nameMap.get(key);
+            if (!prev || num.length < String(prev.number).length) {
+                nameMap.set(key, c);
+            }
+        }
+        const deduped = Array.from(nameMap.values());
+
+        const filtered = deduped
             .filter(c => {
                 if (!s) return true;
                 const name = String(c.pushname || c.name || '').toLowerCase();
@@ -598,7 +612,7 @@ app.post('/get-contacts', async (req, res) => {
                 id:     c.id._serialized,
             }));
 
-        res.json({ contacts: filtered, total: personal.length });
+        res.json({ contacts: filtered, total: deduped.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
