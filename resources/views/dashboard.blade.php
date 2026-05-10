@@ -98,10 +98,16 @@
                         <p class="text-[10px] font-bold text-red-400 mt-1 uppercase tracking-widest">Limit: Max 3 Contacts</p>
                     @endif
                 </div>
-                <a href="{{ route('bulk-message.index') }}" class="mt-4 inline-flex items-center justify-center bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-lg shadow-purple-500/20">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
-                    Bulk Broadcast
-                </a>
+                <div class="mt-4 flex flex-col gap-2">
+                    <a href="{{ route('bulk-message.index') }}" class="inline-flex items-center justify-center bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded-xl text-xs transition shadow-lg shadow-purple-500/20">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        Bulk Broadcast
+                    </a>
+                    <a href="{{ route('contacts.index') }}" class="inline-flex items-center justify-center bg-slate-700/60 hover:bg-slate-700 text-slate-300 font-bold py-2 px-4 rounded-xl text-xs transition border border-slate-600/60">
+                        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path></svg>
+                        Block List
+                    </a>
+                </div>
             </div>
         </div>
 
