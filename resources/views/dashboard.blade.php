@@ -240,6 +240,15 @@
                                         </a>
                                     </div>
                                 </div>
+
+                                <div class="border-t border-slate-800 pt-6">
+                                    <label class="block text-xs font-bold text-emerald-400 uppercase tracking-widest mb-1">Business Sheet ID <span class="text-slate-500 normal-case font-normal">(Products · Live Inventory · Sales Orders)</span></label>
+                                    <p class="text-[10px] text-slate-500 mb-3">Paste the Google Sheet ID from the URL: docs.google.com/spreadsheets/d/<strong class="text-slate-400">THIS_PART</strong>/edit</p>
+                                    <input type="text" name="google_sheet_id" id="google_sheet_id" value="{{ $user->google_sheet_id }}"
+                                        class="w-full bg-slate-900/50 border border-emerald-500/30 rounded-2xl px-5 py-4 text-white focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500 outline-none transition-all placeholder-slate-600"
+                                        placeholder="e.g. 1lKWaAuJkt2hQzcmUfRwsQ_phsfLBFCb-2702nXsY7kU">
+                                    <p class="text-[10px] text-slate-500 mt-2">When set, AI reads stock from <span class="text-emerald-400">Live_Inventory</span> sheet and saves confirmed orders to <span class="text-emerald-400">Sales_Orders</span> sheet automatically.</p>
+                                </div>
                             </div>
 
                             <!-- API Fields -->

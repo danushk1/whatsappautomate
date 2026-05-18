@@ -162,6 +162,7 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                                     "items" => [
                                         "type"       => "object",
                                         "properties" => [
+                                            "product_id"      => ["type" => "string", "description" => "Product ID from the inventory table (first column). Include when available."],
                                             "name"            => ["type" => "string"],
                                             "quantity"        => ["type" => "number"],
                                             "price_breakdown" => ["type" => "string"],
@@ -172,6 +173,11 @@ class ProcessWhatsAppAiJob implements ShouldQueue
                                 "address" => [
                                     "type"        => "string",
                                     "description" => "Customer delivery address. Mandatory — do NOT call confirm_order without this.",
+                                ],
+                                "order_type" => [
+                                    "type"        => "string",
+                                    "enum"        => ["new_order", "return"],
+                                    "description" => "Use 'new_order' for confirmed purchases. Use 'return' when the customer is returning a previously purchased item.",
                                 ],
                             ],
                             "required" => ["items", "address"],
@@ -297,14 +303,22 @@ class ProcessWhatsAppAiJob implements ShouldQueue
 
                     } elseif ($toolCall['function']['name'] === 'confirm_order') {
                         $args           = json_decode($toolCall['function']['arguments'], true);
+                        $isReturn       = ($args['order_type'] ?? 'new_order') === 'return';
+                        $orderId        = 'WA-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5));
+                        $args['_order_id'] = $orderId;
+                        $args['_is_return'] = $isReturn;
                         $extractedOrder = $args;
-                        $this->notifyNewOrder($phone, $args);
+                        $this->notifyNewOrder($phone, $args, $orderId, $isReturn);
+
+                        $toolResultContent = $isReturn
+                            ? ['status' => 'return_saved', 'order_id' => $orderId, 'instruction' => "Return saved. Tell the customer their return ref is {$orderId} and our team will process the refund."]
+                            : ['status' => 'saved', 'order_id' => $orderId, 'instruction' => "Order saved. Mention the order ID {$orderId} naturally to the customer so they can track it."];
 
                         $messages[] = [
                             'role'         => 'tool',
                             'tool_call_id' => $toolCall['id'],
                             'name'         => 'confirm_order',
-                            'content'      => json_encode(['status' => 'processing']),
+                            'content'      => json_encode($toolResultContent),
                         ];
 
                     } elseif ($toolCall['function']['name'] === 'get_order_history') {
@@ -627,6 +641,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
     $p .= "  Address: [address]\n";
     $p .= "  Confirm karannada? 😊\n";
     $p .= "• Call confirm_order ONLY after: customer says YES/OK/hari AND address is provided.\n";
+    $p .= "• When calling confirm_order, include the `product_id` for each item — take it from the ID column in the inventory table.\n";
     $p .= "• If customer asks about past orders, call get_order_history.\n";
     $p .= "━━━━━━━━━━━━━━━━━\n\n";
 
@@ -667,30 +682,115 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             return '';
         }
 
-        $out  = "=== CURRENT SHOP INVENTORY ===\n";
-        $out .= "Item Name | Price (Rs) | Stock | Batch\n";
-        $out .= "--------- | ---------- | ----- | -----\n";
+        $out = "=== CURRENT SHOP INVENTORY ===\n";
 
-        foreach ($inventory as $row) {
-            $name  = trim($row['item name'] ?? $row['name'] ?? '');
-            $price = $row['price'] ?? '';
-            $qty   = $row['stock qty'] ?? $row['qty'] ?? $row['stock'] ?? '';
-            $date  = $row['batch date'] ?? $row['batch'] ?? '';
+        // Business sheet format (has 'product_id' key) — Products + Live_Inventory
+        if (isset($inventory[0]['product_id'])) {
+            $out .= "ID | Product | Price (Rs) | Stock\n";
+            $out .= "-- | ------- | ---------- | -----\n";
+            foreach ($inventory as $row) {
+                $pid    = $row['product_id'] ?? '';
+                $name   = trim($row['item name'] ?? '');
+                $price  = $row['price'] ?? '';
+                $qty    = $row['stock qty'] ?? '0';
+                $status = $row['status'] ?? '';
 
-            if (empty($name)) continue;
+                if (empty($name)) continue;
 
-            $stockLabel = '';
-            if ($qty !== '' && is_numeric($qty) && (float)$qty <= 0) {
-                $stockLabel = '[OUT OF STOCK]';
-            } else {
-                $stockLabel = $qty;
+                if (str_contains(strtoupper($status), 'OUT OF STOCK') || (is_numeric($qty) && (float)$qty <= 0)) {
+                    $stockLabel = '[OUT OF STOCK]';
+                } elseif (str_contains(strtoupper($status), 'LOW')) {
+                    $stockLabel = "{$qty} [LOW]";
+                } else {
+                    $stockLabel = $qty;
+                }
+
+                $out .= "{$pid} | {$name} | {$price} | {$stockLabel}\n";
             }
+        } else {
+            // Legacy format — existing Inventory sheet
+            $out .= "Item Name | Price (Rs) | Stock | Batch\n";
+            $out .= "--------- | ---------- | ----- | -----\n";
+            foreach ($inventory as $row) {
+                $name  = trim($row['item name'] ?? $row['name'] ?? '');
+                $price = $row['price'] ?? '';
+                $qty   = $row['stock qty'] ?? $row['qty'] ?? $row['stock'] ?? '';
+                $date  = $row['batch date'] ?? $row['batch'] ?? '';
 
-            $out .= "{$name} | {$price} | {$stockLabel} | {$date}\n";
+                if (empty($name)) continue;
+
+                $stockLabel = ($qty !== '' && is_numeric($qty) && (float)$qty <= 0)
+                    ? '[OUT OF STOCK]'
+                    : $qty;
+
+                $out .= "{$name} | {$price} | {$stockLabel} | {$date}\n";
+            }
         }
 
         $out .= "==============================\n";
         return $out;
+    }
+
+    private function loadBusinessSheetInventory(): array
+    {
+        try {
+            if (!file_exists(storage_path('app/service_account.json'))) {
+                Log::error("BUSINESS_SHEET: service_account.json not found");
+                return [];
+            }
+
+            $client  = $this->getGoogleClient();
+            $sheets  = new GoogleSheets($client);
+            $sheetId = $this->user->google_sheet_id;
+
+            // Products!A:K — A=ProductID, B=Name, C=Category, D=UnitPrice, E=CostPrice,
+            //                  F=ReorderLevel, G=Active, H=Margin%, I=PriceLabel, J=CurrentStock, K=StockStatus
+            $productRows = $sheets->spreadsheets_values->get($sheetId, 'Products!A2:K')->getValues() ?? [];
+
+            // Live_Inventory!A:H — A=ProductID, B=Name, C=TotalReceived, D=TotalSold,
+            //                       E=CurrentStock, F=ReorderLevel, G=StockValue, H=StockStatus
+            $invRows = $sheets->spreadsheets_values->get($sheetId, 'Live_Inventory!A2:H')->getValues() ?? [];
+
+            // Build ProductID → live stock map
+            $stockMap = [];
+            foreach ($invRows as $row) {
+                $pid = trim($row[0] ?? '');
+                if ($pid) {
+                    $stockMap[$pid] = [
+                        'available' => $row[4] ?? '0',
+                        'status'    => $row[7] ?? 'GOOD',
+                    ];
+                }
+            }
+
+            $result = [];
+            foreach ($productRows as $row) {
+                $productId = trim($row[0] ?? '');
+                $name      = trim($row[1] ?? '');
+                $price     = trim($row[3] ?? '');   // D: Unit Price
+                $active    = strtoupper(trim($row[6] ?? 'Y')); // G: Active
+
+                if (!$productId || !$name || $active === 'N') continue;
+
+                $stock  = $stockMap[$productId] ?? null;
+                $qty    = $stock ? $stock['available'] : ($row[9] ?? '0');   // Live_Inventory or Products!J
+                $status = $stock ? $stock['status']    : ($row[10] ?? 'GOOD'); // Live_Inventory or Products!K
+
+                $result[] = [
+                    'product_id' => $productId,
+                    'item name'  => $name,
+                    'price'      => $price,
+                    'stock qty'  => $qty,
+                    'status'     => $status,
+                ];
+            }
+
+            return $result;
+
+        } catch (Exception $e) {
+            Log::error("BUSINESS_SHEET_LOAD: " . $e->getMessage());
+            return [];
+        }
     }
 
     private function saveChatHistory($phone, $role, $content, $toolCallId = null, $toolName = null)
@@ -734,6 +834,11 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
      */
     private function loadFullInventory(): array
     {
+        // Business sheet mode: Products + Live_Inventory tabs
+        if (!empty($this->user->google_sheet_id)) {
+            return $this->loadBusinessSheetInventory();
+        }
+
         if (empty($this->user->google_sheet_name)) {
             return [];
         }
@@ -857,7 +962,67 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
             }
         }
 
-        // 2. Save to Google Sheets if enabled
+        // 2. Save to Business Sheet (Sales_Orders tab) if google_sheet_id is set
+        if (!empty($this->user->google_sheet_id)) {
+            try {
+                $client   = $this->getGoogleClient();
+                $sheets   = new GoogleSheets($client);
+                $sheetId  = $this->user->google_sheet_id;
+                $isReturn = $orderData['_is_return'] ?? false;
+                $orderId  = $orderData['_order_id'] ?? ('WA-' . date('Ymd') . '-' . strtoupper(substr(uniqid(), -5)));
+                $status   = $isReturn ? 'Returned' : 'Pending';
+                $source   = 'WhatsApp | ' . ($this->user->name ?? 'Unknown');
+
+                // Look up customer name from Customers sheet by phone
+                $cleanPhone    = preg_replace('/[^0-9]/', '', preg_replace('/@.*$/', '', $phone));
+                $customerName  = $this->getCustomerNameFromSheet($sheets, $sheetId, $cleanPhone) ?: $cleanPhone;
+
+                foreach ($orderData['items'] as $item) {
+                    $productId   = trim($item['product_id'] ?? $item['sku'] ?? '');
+                    $productName = $item['name'] ?? '';
+                    $qty         = (int) ($item['quantity'] ?? 1);
+                    $totalPrice  = (float) ($item['total_price'] ?? 0);
+                    $unitPrice   = $qty > 0 ? round($totalPrice / $qty, 2) : $totalPrice;
+                    $costPrice   = $this->getCostPriceFromSheet($sheets, $sheetId, $productId);
+
+                    $qtySold      = $isReturn ? 0   : $qty;
+                    $qtyReturned  = $isReturn ? $qty : 0;
+                    $totalRevenue = ($qtySold - $qtyReturned) * $unitPrice;
+                    $netProfit    = $totalRevenue - ($costPrice * ($qtySold - $qtyReturned));
+
+                    // Sales_Orders: A=OrderID, B=Date, C=Customer, D=ProductID, E=Source,
+                    //               F=ProductName, G=Quantity, H=QtyReturned, I=UnitPrice,
+                    //               J=TotalRevenue, K=CostPrice, L=NetProfit, M=DeliveryStatus,
+                    //               N=DiscountAmount, O=DeliveryFee, P=PaymentMethod
+                    $row = [
+                        $orderId,             // A: Order ID
+                        date('Y-m-d H:i:s'),  // B: Date
+                        $customerName,         // C: Customer
+                        $productId,            // D: Product ID
+                        $source,               // E: Source
+                        $productName,          // F: Product Name
+                        $qtySold,              // G: Quantity
+                        $qtyReturned,          // H: Qty Returned
+                        $unitPrice,            // I: Unit Price
+                        $totalRevenue,         // J: Total Revenue
+                        $costPrice,            // K: Cost Price
+                        $netProfit,            // L: Net Profit
+                        $status,               // M: Delivery Status (Pending / Returned)
+                        0,                     // N: Discount Amount
+                        0,                     // O: Delivery Fee
+                        'COD',                 // P: Payment Method
+                    ];
+
+                    $body = new \Google\Service\Sheets\ValueRange(['values' => [$row]]);
+                    $sheets->spreadsheets_values->append($sheetId, 'Sales_Orders!A:P', $body, ['valueInputOption' => 'USER_ENTERED']);
+                    $creditsUsed++;
+                }
+            } catch (Exception $e) {
+                Log::error("SALES_ORDERS_WRITE: " . $e->getMessage());
+            }
+        }
+
+        // 3. Save to Google Sheets (legacy Inventory sheet) if google_sheet_name is set
         if (!empty($this->user->google_sheet_name)) {
             try {
                 $client  = $this->getGoogleClient();
@@ -1007,6 +1172,43 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         return array_values(array_unique(array_merge([$query], $words)));
     }
 
+    private function getCostPriceFromSheet(GoogleSheets $sheets, string $sheetId, string $productId): float
+    {
+        try {
+            // GRN_Purchases!A:H — A=GRNID, B=Date, C=ProductID, D=Name, E=Qty, F=TransactionType, G=UnitCost, H=TotalCost
+            $rows = $sheets->spreadsheets_values->get($sheetId, 'GRN_Purchases!C2:G')->getValues() ?? [];
+            $last = 0.0;
+            foreach ($rows as $row) {
+                $rowPid = trim($row[0] ?? '');  // C: Product ID
+                $type   = trim($row[3] ?? '');  // F: Transaction Type
+                $price  = (float) ($row[4] ?? 0); // G: Unit Cost
+                if (strtolower($rowPid) === strtolower($productId) && $type !== 'Purchase Return') {
+                    $last = $price;
+                }
+            }
+            return $last;
+        } catch (Exception $e) {
+            return 0.0;
+        }
+    }
+
+    private function getCustomerNameFromSheet(GoogleSheets $sheets, string $sheetId, string $phone): string
+    {
+        try {
+            // Customers!A:C — A=CustomerID, B=Name, C=Phone
+            $rows = $sheets->spreadsheets_values->get($sheetId, 'Customers!B2:C')->getValues() ?? [];
+            foreach ($rows as $row) {
+                $sheetPhone = preg_replace('/[^0-9]/', '', $row[1] ?? '');
+                if ($sheetPhone && $sheetPhone === $phone) {
+                    return trim($row[0] ?? '');
+                }
+            }
+            return '';
+        } catch (Exception $e) {
+            return '';
+        }
+    }
+
     private function getGoogleClient()
     {
         $client = new GoogleClient();
@@ -1088,7 +1290,7 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         }
     }
 
-    private function notifyNewOrder(string $customerPhone, array $orderData): void
+    private function notifyNewOrder(string $customerPhone, array $orderData, string $orderId = '', bool $isReturn = false): void
     {
         try {
             $user        = $this->user->fresh();
@@ -1128,7 +1330,10 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
 
             $address = $orderData['address'] ?? 'N/A';
 
-            $msg = "📋 New Order!\n"
+            $label   = $isReturn ? '🔄 Return Order' : '📋 New Order';
+            $idLine  = $orderId ? "🆔 {$orderId}\n" : '';
+            $msg = "{$label}!\n"
+                . $idLine
                 . $nameLine
                 . "📱 {$displayPhone}\n"
                 . $itemLines

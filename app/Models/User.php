@@ -45,6 +45,7 @@ class User extends Authenticatable implements FilamentUser
         'has_claimed_autoreply_bonus',
         'inventory_api_url',
         'google_sheet_name',
+        'google_sheet_id',
         'order_api_url',
         'google_id',
         'balance',
