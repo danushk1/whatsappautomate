@@ -87,6 +87,7 @@ async function getOrCreateClient(userId) {
         }),
         puppeteer: {
             headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             protocolTimeout: 120000,
             args: [
                 '--no-sandbox',
@@ -553,6 +554,25 @@ app.post('/send-message', async (req, res) => {
         res.json({ status: 'sent', to: phone });
     } catch (err) {
         console.error(`[${user_id}] Send message error:`, err);
+
+        // Detached Frame = Puppeteer page is dead. Destroy the client so it
+        // auto-restores from the saved session on the next request.
+        if (err.message && err.message.includes('detached Frame')) {
+            console.warn(`[${user_id}] Detached frame detected — destroying stale client for auto-reinit`);
+            try {
+                await clientData.client.destroy();
+            } catch (_) {}
+            clients.delete(String(user_id));
+            // Kick off background reinit so the next message works immediately
+            getOrCreateClient(user_id).catch(e =>
+                console.error(`[${user_id}] Background reinit failed:`, e.message)
+            );
+            return res.status(503).json({
+                error: 'WhatsApp session refreshing, please retry in a few seconds',
+                retry: true,
+            });
+        }
+
         res.status(500).json({ error: err.message });
     }
 });

@@ -919,21 +919,41 @@ private function getSystemPrompt(bool $isSilent, array $inventory = [], bool $is
         $nodeBridgeUrl = config('services.node_bridge.url');
         $apiKey        = config('services.node_bridge.secret_key');
 
-        try {
-            $response = Http::withHeaders([
-                'x-api-key'    => $apiKey,
-                'Content-Type' => 'application/json',
-            ])->post("{$nodeBridgeUrl}/send-message", [
-                'user_id' => $this->user->id,
-                'phone'   => $phone,
-                'message' => $text,
-            ]);
+        $attempts = 0;
+        $maxAttempts = 3;
 
-            if (!$response->successful()) {
+        while ($attempts < $maxAttempts) {
+            $attempts++;
+            try {
+                $response = Http::withHeaders([
+                    'x-api-key'    => $apiKey,
+                    'Content-Type' => 'application/json',
+                ])->timeout(30)->post("{$nodeBridgeUrl}/send-message", [
+                    'user_id' => $this->user->id,
+                    'phone'   => $phone,
+                    'message' => $text,
+                ]);
+
+                if ($response->successful()) {
+                    return; // sent ok
+                }
+
+                $body = $response->json();
+
+                // 503 with retry=true means Node Bridge is reinitialising (detached frame).
+                // Wait a few seconds and try again.
+                if ($response->status() === 503 && ($body['retry'] ?? false) && $attempts < $maxAttempts) {
+                    Log::warning("⚠️ Node Bridge reinitialising, retrying in 5s (attempt {$attempts})");
+                    sleep(5);
+                    continue;
+                }
+
                 Log::error("❌ Node Bridge send failed", ['status' => $response->status(), 'body' => $response->body()]);
+                return;
+            } catch (\Exception $e) {
+                Log::error("❌ Node Bridge connection error: " . $e->getMessage());
+                return;
             }
-        } catch (\Exception $e) {
-            Log::error("❌ Node Bridge connection error: " . $e->getMessage());
         }
     }
 
